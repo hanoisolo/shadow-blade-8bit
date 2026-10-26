@@ -1157,6 +1157,64 @@ test('projectiles are culled past stage edge, into ground, or on platform solids
   assert.strictEqual(c.projectiles.length, 0, 'platform-solid projectile not culled');
 });
 
+/* ---------- Phase 2 — Segment 2 Asset & DOM Tests ---------- */
+
+test('asset exists on disk: assets/gargoyle_sheet.jpg', function () {
+  assert.ok(fs.existsSync(path.join(__dirname, 'assets/gargoyle_sheet.jpg')), 'missing file assets/gargoyle_sheet.jpg');
+});
+
+test('asset larger than 10,000 bytes: assets/gargoyle_sheet.jpg', function () {
+  const stats = fs.statSync(path.join(__dirname, 'assets/gargoyle_sheet.jpg'));
+  assert.ok(stats.size > 10000, 'assets/gargoyle_sheet.jpg is only ' + stats.size + ' bytes');
+});
+
+test('asset starts with JPEG magic bytes (FF D8 FF): assets/gargoyle_sheet.jpg', function () {
+  const fd = fs.openSync(path.join(__dirname, 'assets/gargoyle_sheet.jpg'), 'r');
+  const buf = Buffer.alloc(3);
+  fs.readSync(fd, buf, 0, 3, 0);
+  fs.closeSync(fd);
+  assert.strictEqual(buf[0], 0xFF, 'assets/gargoyle_sheet.jpg byte 0');
+  assert.strictEqual(buf[1], 0xD8, 'assets/gargoyle_sheet.jpg byte 1');
+  assert.strictEqual(buf[2], 0xFF, 'assets/gargoyle_sheet.jpg byte 2');
+});
+
+test('index.html contains Phase 2 stage progress DOM id (#hud-stage-progress)', function () {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  assert.ok(html.indexOf('id="hud-stage-progress"') !== -1, 'index.html is missing id="hud-stage-progress"');
+});
+
+test('index.html contains Phase 2 boss alert DOM id (#hud-boss-alert)', function () {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  assert.ok(html.indexOf('id="hud-boss-alert"') !== -1, 'index.html is missing id="hud-boss-alert"');
+});
+
+test('anti-drift: all 19 required DOM ids (17 Phase 1 + 2 Phase 2) exist verbatim in index.html', function () {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const requiredIds = MANDATORY_DOM_IDS.concat(['hud-stage-progress', 'hud-boss-alert']);
+  assert.strictEqual(requiredIds.length, 19, 'expected 19 required DOM ids, got ' + requiredIds.length);
+  requiredIds.forEach(function (id) {
+    assert.ok(
+      html.indexOf('id="' + id + '"') !== -1,
+      'index.html is missing id="' + id + '"'
+    );
+  });
+});
+
+test('styles.css defines retro frame and gold fill rules for #hud-stage-progress', function () {
+  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+  assert.ok(css.indexOf('#hud-stage-progress') !== -1, 'missing #hud-stage-progress rule');
+  assert.ok(css.indexOf('.hud-progress-fill') !== -1, 'missing .hud-progress-fill rule');
+  assert.ok(css.indexOf('.hud-progress-container') !== -1, 'missing .hud-progress-container rule');
+});
+
+test('styles.css defines flashing crimson banner and keyframes for #hud-boss-alert', function () {
+  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+  assert.ok(css.indexOf('#hud-boss-alert') !== -1, 'missing #hud-boss-alert rule');
+  assert.ok(css.indexOf('.boss-alert-banner') !== -1, 'missing .boss-alert-banner rule');
+  assert.ok(css.indexOf('@keyframes boss-alert-pulse') !== -1, 'missing boss-alert-pulse keyframes');
+  assert.ok(css.indexOf('.boss-alert-banner.hidden') !== -1, 'missing hidden-state override for the banner');
+});
+
 /* ---------- Summary ---------- */
 
 console.log('----------------------------------------');
