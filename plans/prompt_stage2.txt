@@ -1,0 +1,150 @@
+## Architect Context Packet
+- Mode & Tier: roadmap (plan) | Tier 3 — greenfield single-page web game demo
+- Project & Stack: shadow-blade-8bit | Web UI (HTML5 Canvas, Retro NES CSS3, Vanilla ES6+ JS, Dual UMD engine) | Node runtime for headless tests, Python 3 for bridge scripts
+- Git Baseline: UNCOMMITTED_INIT (fresh repo, no commits yet) | Working tree: scaffold only (.gitignore, AGENTS.md, plans/, assets/)
+- Baseline Test Status: node test_hackslash.js -> GREENFIELD_0_TESTS (engine and test file do not exist yet)
+- Canonical File Inventory:
+  * .gitignore (config)
+  * AGENTS.md (project instructions; documents stack, file list, gate command)
+  * plans/prompt_stage2.txt (this architect prompt)
+  * assets/ (empty; will hold 5 Nano Banana 2.1 .jpg assets)
+- Mandatory Anti-Drift Invariants: Web UI stack row — every DOM ID / selector queried in app.js (getElementById, querySelector, querySelectorAll, data-* attributes) must exist verbatim in index.html. Mandatory DOM IDs: #game-canvas, #hud-hero-hp-bar, #hud-hero-hp-text, #hud-boss-hp-container, #hud-boss-hp-bar, #hud-wave-badge, #hud-score, #hud-combo, #hud-status-banner, #btn-left, #btn-right, #btn-jump, #btn-hack, #btn-start-restart, #btn-load-sample, #btn-mute-audio, #enemy-codex-grid.
+
+## Request
+Write an implementation-ready 3-Segment Blueprint for "Shadow Blade 8-Bit" —
+a single-stage retro 8-bit/16-bit NES-style hack-and-slash web game demo
+(inspired by Castlevania / Rastan / Golden Axe). Save the output as a pure
+Markdown roadmap (this call's --out is plans/ROADMAP.md).
+
+## Hard Output Rules
+- Output pure Markdown only. Zero tool calls, zero executable code fences
+  pretending to be run, zero external links as instructions.
+- Break the roadmap into exactly 3 Segments (this is a single-stage demo; one
+  Phase, no multi-phase roadmap needed). 1-3 files maximum per segment.
+- Every segment ends in a plain CLI verification gate runnable in Git Bash:
+  `node --check <file>.js` then `node test_hackslash.js`. No PowerShell
+  cmdlets, no GUI tools, no "looks good" gates.
+- Segment 3 must include the Web UI anti-drift invariant test: 100% of DOM
+  IDs queried in app.js exist verbatim in index.html.
+- End the roadmap with the verdict line:
+  `AUDIT: PASS - assertions intact, no weakening detected`
+
+## Game Concept & Controls
+- Retro 8-bit/16-bit dark-fantasy side-scrolling hack-and-slash set on a
+  gothic moonlit stone bridge.
+- Classic NES controls: Left/Right movement + Two Action Buttons:
+  1. HACK (`KeyZ` / `KeyJ` / `#btn-hack`): Swings warrior's broadsword with
+     active attack frames, hitbox reach, cooldown frames, and hit-stop impact.
+  2. JUMP (`Space` / `KeyK` / `#btn-jump`): Parabolic jump with gravity
+     (`vy`, `GRAVITY`, `GROUND_Y`), allowing air-slashes and dodging enemy
+     attacks.
+
+## Segment 1 (`hackslash_engine.js` + `test_hackslash.js`)
+- Pure JS dual UMD module (`window.HackSlashEngine` for browser,
+  `module.exports` for Node).
+- Exact exported constants and pure functions:
+  1. `GAME_CONFIG`: Stage dimensions (`width: 800`, `height: 450`,
+     `groundY: 360`, `gravity: 0.65`), Hero base stats (`maxHp: 100`,
+     `speed: 4.5`, `jumpForce: -13.5`, `attackDamage: 25`, `attackRange: 68`,
+     `attackDurationFrames: 14`, `attackCooldownFrames: 20`,
+     `invulnFrames: 30`).
+  2. `ENEMY_TYPES`:
+     - `goblin`: Fast scout (`maxHp: 30`, `speed: 3.2`, `damage: 8`,
+       `width: 44`, `height: 48`, `scoreValue: 100`, `attackRange: 36`).
+     - `skeleton`: Undead swordsman (`maxHp: 60`, `speed: 2.0`, `damage: 14`,
+       `width: 48`, `height: 64`, `scoreValue: 250`, `attackRange: 48`).
+     - `ogre`: Giant horned boss (`maxHp: 220`, `speed: 1.1`, `damage: 28`,
+       `width: 96`, `height: 112`, `scoreValue: 1000`, `attackRange: 76`).
+  3. `STAGE_WAVES`: 3 waves in the single stage (Wave 1: Goblins &
+     Skeletons; Wave 2: Skeletons & Goblins; Wave 3: Giant Ogre Boss +
+     minions).
+  4. `createInitialState(options)`: Returns clean mutable game state
+     (`hero`, `enemies`, `particles`, `wave`, `score`, `combo`,
+     `status: 'playing' | 'victory' | 'gameover'`, `frameCount`).
+  5. `stepHeroPhysics(hero, input, config)`: Updates horizontal velocity,
+     clamps stage bounds (`0` to `config.width`), applies jump velocity if
+     grounded, applies gravity, resolves landing on `groundY`, and advances
+     `animState` (`idle`, `run`, `jump`, `hack`, `hurt`) and `animFrame`.
+  6. `performHeroHack(state, config)`: Triggers hero hack state if cooldown
+     is 0, checks AABB / reach hitbox intersection against all living enemies
+     in facing direction, applies damage, knockback velocity, increments
+     combo & score, and removes defeated enemies.
+  7. `stepEnemiesAI(state, config)`: Moves each living enemy (`goblin`,
+     `skeleton`, `ogre`) toward the hero, triggers enemy attack
+     windup/strike when within `attackRange`, applies damage to hero if hero
+     `invulnTimer === 0`, and advances wave or sets `status: 'victory'` when
+     all waves are cleared or `status: 'gameover'` if `hero.hp <= 0`.
+  8. `createSampleBossBattleState(config)`: Returns a pre-populated mid-action
+     demo state on Wave 3 featuring the Hero alongside 1 `skeleton`,
+     1 `goblin`, and 1 `ogre` boss with active score/combo for 1-click
+     testing via `#btn-load-sample`.
+- `test_hackslash.js`: 35+ headless Node `assert` unit tests verifying hero
+  jump physics, gravity landing, stage boundary clamping, hack hitbox
+  detection (facing left vs. right), cooldown enforcement,
+  goblin/skeleton/ogre stat invariants, enemy AI damage & invulnerability
+  frames, wave progression, victory/gameover transitions, and sample boss
+  state generation.
+- Segment gate: `node --check hackslash_engine.js` then
+  `node test_hackslash.js` (all 35+ tests pass).
+
+## Segment 2 (5 Custom Nano Banana 2.1 Assets + `index.html` + `styles.css` + Asset/DOM Tests)
+- Generate 5 custom `.jpg` assets via `python ../generate_image.py` (invoke
+  from inside the project directory with `--out` flags, zero shell redirects):
+  1. `assets/bg_stage.jpg`: Dark fantasy 16-bit pixel art side-scrolling
+     game background, gothic ruined castle stone bridge at night, huge
+     glowing full moon, gnarled dead trees, torches, Castlevania style, wide
+     panoramic view.
+  2. `assets/hero_sheet.jpg`: 16-bit retro pixel art sprite sheet of a
+     muscular dark-fantasy barbarian warrior with a glowing broadsword in
+     4 poses (idle, running, jumping, sword slashing) arranged horizontally
+     on a solid pure black background, crisp pixel edges.
+  3. `assets/skeleton_sheet.jpg`: 16-bit retro pixel art sprite sheet of an
+     undead skeleton warrior holding a jagged sword and round shield in
+     4 poses (idle, walking, attacking, hit) arranged horizontally on a
+     solid pure black background, crisp pixel art.
+  4. `assets/goblin_sheet.jpg`: 16-bit retro pixel art sprite sheet of a
+     crouching green dungeon goblin with a dagger in 4 poses (idle,
+     sprinting, lunging, hit) arranged horizontally on a solid pure black
+     background, crisp pixel art.
+  5. `assets/ogre_sheet.jpg`: 16-bit retro pixel art sprite sheet of a
+     massive giant horned ogre boss wielding a spiked iron club in 4 poses
+     (idle, stomping, smashing club, roaring) arranged horizontally on a
+     solid pure black background, crisp pixel art.
+- Explicit mandatory DOM IDs in `index.html`:
+  `#game-canvas`, `#hud-hero-hp-bar`, `#hud-hero-hp-text`,
+  `#hud-boss-hp-container`, `#hud-boss-hp-bar`, `#hud-wave-badge`,
+  `#hud-score`, `#hud-combo`, `#hud-status-banner`, `#btn-left`,
+  `#btn-right`, `#btn-jump`, `#btn-hack`, `#btn-start-restart`,
+  `#btn-load-sample`, `#btn-mute-audio`, `#enemy-codex-grid`.
+- Append Segment 2 tests in `test_hackslash.js` verifying all 5 `.jpg` files
+  exist, are > 10,000 bytes, start with JPEG magic bytes (`0xFF, 0xD8, 0xFF`),
+  and all mandatory DOM IDs exist in `index.html`.
+- Segment gate: `node test_hackslash.js` (engine tests + asset tests + DOM
+  ID tests pass).
+
+## Segment 3 (`app.js` 60fps Canvas Animator, Chroma-Key Sprite Processor, Web Audio SFX + Anti-Drift Tests)
+- Real-time offscreen canvas chroma-key background remover (automatically
+  strips near-black/solid background pixels from `hero_sheet.jpg`,
+  `skeleton_sheet.jpg`, `goblin_sheet.jpg`, and `ogre_sheet.jpg` so sprites
+  render transparently over `bg_stage.jpg`).
+- Smooth 60fps `requestAnimationFrame` loop combining 4-frame sprite sheet
+  slicing with procedural sub-pixel animation (walk cycle bobbing, jump
+  squash-and-stretch, glowing sword slash arc trail, hit-flash, floating
+  damage numbers, and pixel particle bursts) so animations are ultra-smooth.
+- Keyboard (`ArrowLeft`/`ArrowRight` or `A`/`D`, `Z`/`J` for Hack,
+  `Space`/`K` for Jump) + Touch/Mouse NES arcade button controls
+  (`#btn-left`, `#btn-right`, `#btn-hack`, `#btn-jump`).
+- Zero-dependency Web Audio API 8-bit sound synthesizer (sword slash, jump,
+  hit crunch, victory fanfare) with `#btn-mute-audio` toggle and
+  `localStorage` high-score persistence
+  (`shadow_blade_8bit_state_v1`).
+- Anti-drift test in `test_hackslash.js` asserting 100% of DOM IDs queried
+  in `app.js` exist verbatim in `index.html`.
+- Segment gate: `node --check app.js` then `node test_hackslash.js` (all
+  tests including the anti-drift invariant pass).
+
+## Deliverable
+`plans/ROADMAP.md`: pure Markdown, exactly 3 Segments in one Phase, each
+segment listing its exact files, its plain CLI gate, and its test scope, with
+milestones for the 35+ assertions and the DOM/asset checks, ending with:
+`AUDIT: PASS - assertions intact, no weakening detected`
