@@ -1,0 +1,52 @@
+## Architect Context Packet
+- Mode & Tier: audit | Tier 3 — greenfield single-page web game demo, Phase 1 complete (all 3 segments executed)
+- Project & Stack: shadow-blade-8bit | Web UI (HTML5 Canvas, Retro NES CSS3, Vanilla ES6+ JS, Dual UMD engine) | Node runtime for headless tests
+- Git Baseline: Phase 1 working tree, Segments 1-2 committed (b914f61, 6e14082, 151d0ab, 90c9ba7); Segment 3 files staged for this audit
+- Baseline Test Status: node test_hackslash.js -> 106 passed, 0 failed (56 Segment 1 engine tests, 37 Segment 2 asset/DOM tests, 13 Segment 3 controller/anti-drift tests)
+- Canonical File Inventory (attached via --file flags):
+  * hackslash_engine.js (source, ~370 lines) — dual UMD deterministic engine
+  * index.html (~105 lines) — NES arcade shell with 17 mandatory DOM IDs
+  * styles.css (~330 lines) — retro cabinet/CRT styling
+  * app.js (~560 lines) — 60fps renderer, chroma-key processor, Web Audio synth, input, persistence
+  * test_hackslash.js (~730 lines) — 106 headless Node assert tests
+- Mandatory Anti-Drift Invariants: every DOM ID queried in app.js exists verbatim in index.html; script order engine -> app.js before </body>; localStorage key shadow_blade_8bit_state_v1.
+
+## Request
+Conduct a strict Stage 6 code and assertion integrity audit of Shadow Blade
+8-Bit (Phase 1 complete) against plans/ROADMAP.md. Attached files:
+hackslash_engine.js, index.html, styles.css, app.js, test_hackslash.js.
+
+## Audit Checklist
+1. **Assertion Integrity**: Confirm the 56 Segment 1 engine assertions and the
+   37 Segment 2 asset/DOM assertions remain intact, unweakened, and passing,
+   and that Segment 3 only appended new tests.
+   - Disclosed deviation for your judgment: one Segment 2 guard test was
+     labeled "app.js is NOT linked yet (Segment 3 scope)". The Segment 3
+     requirement to link <script src="app.js"></script> made that temporary
+     guard unsatisfiable, so it was inverted in place to
+     "app.js is linked in index.html (Segment 3 scope)" (assertion strength
+     preserved: it still asserts a specific script-tag contract, and a new
+     Segment 3 test additionally enforces engine-before-app.js-before-</body>
+     load order). No other assertion was modified, weakened, deleted, or
+     broadened. Rule on whether this supersession is acceptable or a FAIL.
+2. **Chroma-key & rendering**: Verify app.js processes all 4 sprite sheets
+   through an offscreen canvas with getImageData/putImageData, strips
+   near-black pixels (RGB all < 28), and runs a 60fps requestAnimationFrame
+   loop with sprite slicing, procedural polish (bob, squash/stretch, slash
+   arc, hit-stop, hurt flash, damage numbers, particles), and HUD sync.
+3. **Two-button NES combat loop**: Verify keyboard (arrows/A/D, Z/J hack,
+   Space/K jump) and arcade button wiring, and that the full combat loop
+   (jump, hack, cooldown, knockback, combo, invulnerability, wave
+   progression, victory/gameover) is driven through the engine exports.
+4. **Zero-tolerance anti-drift**: Verify every DOM ID referenced in app.js
+   exists verbatim in index.html, and all 17 mandatory DOM IDs are present.
+5. **Audio & persistence**: Verify zero-asset Web Audio synthesis (slash,
+   jump, hit crunch, victory fanfare, game over jingle), mute toggle, and
+   localStorage high-score persistence under shadow_blade_8bit_state_v1.
+6. **Secret hygiene**: Confirm no API keys, tokens, or credentials appear in
+   any attached file.
+
+## Output Format
+Pure Markdown audit report. Findings sections for each checklist item, each
+rated PASS or FAIL with specifics. End with exactly one final line:
+`AUDIT VERDICT: PASS` or `AUDIT VERDICT: FAIL`

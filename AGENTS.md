@@ -40,6 +40,24 @@ Every `getElementById` / `querySelector` / `data-*` selector queried in
 `test_hackslash.js`.
 
 ## Current Status
-Phase 1 / Segments 1-2 complete — engine + tests, 5 Nano Banana assets,
-index.html, styles.css (93/93 assertions green via `node test_hackslash.js`).
-Segment 3 (app.js renderer, chroma-key, Web Audio, anti-drift tests) pending.
+Phase 1 COMPLETE (Segments 1-3). 106/106 headless assertions green via
+`node test_hackslash.js` (56 engine + 37 asset/DOM + 13 controller/anti-drift).
+Stage 6 Gemini 4 Argon audit: `AUDIT VERDICT: PASS`
+(plans/stage6_audit.md). Playable demo: open index.html in a browser.
+
+## Active File Map
+| File | Role |
+| :--- | :--- |
+| `hackslash_engine.js` | Dual UMD deterministic game engine (source) |
+| `app.js` | 60fps Canvas renderer, chroma-key processor, Web Audio SFX, input, persistence |
+| `index.html` | NES arcade shell, 17 mandatory DOM IDs, HUD, buttons, Enemy Codex |
+| `styles.css` | Retro NES cabinet / CRT styling |
+| `test_hackslash.js` | 106 headless Node assert tests (CLI gate) |
+| `assets/*.jpg` | 5 Nano Banana 2.1 pixel art assets |
+| `plans/` | Roadmap, architect prompts, Stage 6 audit |
+
+## Audit Outcome
+Stage 6 assertion integrity audit (plans/stage6_audit.md): all Segment 1 and
+Segment 2 assertions intact; one Segment 2 temporary guard ("app.js NOT
+linked") legitimately superseded in Segment 3 to enforce app.js linking and
+script order; Segment 3 tests appended cleanly. Secret hygiene: clean.

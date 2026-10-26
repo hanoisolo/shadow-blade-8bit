@@ -715,9 +715,108 @@ test('engine script tag linked before closing body in index.html', function () {
   );
 });
 
-test('app.js is NOT linked yet (Segment 3 scope)', function () {
+test('app.js is linked in index.html (Segment 3 scope)', function () {
   const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-  assert.ok(html.indexOf('app.js') === -1, 'app.js linked prematurely');
+  assert.ok(html.indexOf('app.js') !== -1, 'app.js script tag missing');
+});
+
+/* ---------- Segment 3 Controller & Anti-Drift Tests ---------- */
+
+const APP_JS = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+
+test('app.js exists and is longer than 5,000 characters', function () {
+  assert.ok(APP_JS.length > 5000, 'app.js is only ' + APP_JS.length + ' chars');
+});
+
+test('anti-drift: every getElementById target in app.js exists verbatim in index.html', function () {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const re = /document\.getElementById\(\s*['"]([^'"]+)['"]\s*\)/g;
+  let match;
+  let checked = 0;
+  while ((match = re.exec(APP_JS)) !== null) {
+    checked += 1;
+    assert.ok(
+      html.indexOf('id="' + match[1] + '"') !== -1,
+      'app.js queries #' + match[1] + ' which is missing from index.html'
+    );
+  }
+  assert.ok(checked >= 16, 'expected at least 16 getElementById calls, found ' + checked);
+});
+
+test('anti-drift: every querySelector/querySelectorAll ID target in app.js exists in index.html', function () {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const re = /querySelector(All)?\(\s*['"]#([^'"]+)['"]\s*\)/g;
+  let match;
+  while ((match = re.exec(APP_JS)) !== null) {
+    assert.ok(
+      html.indexOf('id="' + match[2] + '"') !== -1,
+      'app.js queries #' + match[2] + ' which is missing from index.html'
+    );
+  }
+});
+
+test('index.html loads engine before app.js, both before </body>', function () {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const engineIndex = html.indexOf('hackslash_engine.js');
+  const appIndex = html.indexOf('app.js');
+  const bodyEnd = html.indexOf('</body>');
+  assert.ok(engineIndex !== -1, 'engine script missing');
+  assert.ok(appIndex !== -1, 'app.js script missing');
+  assert.ok(bodyEnd !== -1, 'closing body tag missing');
+  assert.ok(engineIndex < appIndex, 'app.js must load after the engine');
+  assert.ok(appIndex < bodyEnd, 'app.js must load before </body>');
+});
+
+test('app.js integrates all 5 required engine functions', function () {
+  ['createInitialState', 'stepHeroPhysics', 'performHeroHack', 'stepEnemiesAI',
+    'createSampleBossBattleState'].forEach(function (fn) {
+    assert.ok(APP_JS.indexOf(fn) !== -1, 'app.js never calls ' + fn);
+  });
+});
+
+test('app.js persists state under localStorage key shadow_blade_8bit_state_v1', function () {
+  assert.ok(APP_JS.indexOf('shadow_blade_8bit_state_v1') !== -1, 'storage key missing');
+  assert.ok(APP_JS.indexOf('localStorage') !== -1, 'localStorage API missing');
+});
+
+test('app.js implements chroma-key processing (getImageData + putImageData + threshold 28)', function () {
+  assert.ok(APP_JS.indexOf('getImageData') !== -1, 'getImageData missing');
+  assert.ok(APP_JS.indexOf('putImageData') !== -1, 'putImageData missing');
+  assert.ok(APP_JS.indexOf('CHROMA_KEY_THRESHOLD = 28') !== -1, 'chroma threshold 28 missing');
+});
+
+test('app.js runs a 60fps requestAnimationFrame loop', function () {
+  assert.ok(APP_JS.indexOf('requestAnimationFrame') !== -1, 'requestAnimationFrame missing');
+});
+
+test('app.js implements Web Audio synthesis (AudioContext, oscillator, noise buffer)', function () {
+  assert.ok(APP_JS.indexOf('AudioContext') !== -1, 'AudioContext missing');
+  assert.ok(APP_JS.indexOf('createOscillator') !== -1, 'oscillator missing');
+  assert.ok(APP_JS.indexOf('createBuffer') !== -1, 'noise buffer missing');
+});
+
+test('app.js binds all 8 keyboard controls', function () {
+  ['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD', 'Space', 'KeyK', 'KeyZ', 'KeyJ'].forEach(function (code) {
+    assert.ok(APP_JS.indexOf(code) !== -1, 'key binding ' + code + ' missing');
+  });
+});
+
+test('app.js wires the 4 arcade buttons and 3 utility buttons', function () {
+  ['btn-left', 'btn-right', 'btn-jump', 'btn-hack',
+    'btn-start-restart', 'btn-load-sample', 'btn-mute-audio'].forEach(function (id) {
+    assert.ok(APP_JS.indexOf(id) !== -1, 'button wiring for #' + id + ' missing');
+  });
+});
+
+test('app.js synthesizes the required SFX set (slash, jump, hit, victory, game over)', function () {
+  ['sfxSlash', 'sfxJump', 'sfxHit', 'sfxVictory', 'sfxGameOver'].forEach(function (fn) {
+    assert.ok(APP_JS.indexOf(fn) !== -1, 'SFX function ' + fn + ' missing');
+  });
+});
+
+test('app.js implements the SFX mute toggle labels (SFX ON / SFX OFF)', function () {
+  assert.ok(APP_JS.indexOf('SFX ON') !== -1, 'SFX ON label missing');
+  assert.ok(APP_JS.indexOf('SFX OFF') !== -1, 'SFX OFF label missing');
 });
 
 /* ---------- Summary ---------- */
