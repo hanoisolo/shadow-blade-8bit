@@ -1215,6 +1215,82 @@ test('styles.css defines flashing crimson banner and keyframes for #hud-boss-ale
   assert.ok(css.indexOf('.boss-alert-banner.hidden') !== -1, 'missing hidden-state override for the banner');
 });
 
+/* ---------- Phase 2 — Segment 3 Controller & Anti-Drift Tests ---------- */
+
+test('Phase 2 anti-drift: every getElementById and querySelector ID in app.js exists in index.html', function () {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const idRe = /document\.getElementById\(\s*['"]([^'"]+)['"]\s*\)/g;
+  const qsRe = /querySelector(All)?\(\s*['"]#([^'"]+)['"]\s*\)/g;
+  let match;
+  let checked = 0;
+  while ((match = idRe.exec(APP_JS)) !== null) {
+    checked += 1;
+    assert.ok(
+      html.indexOf('id="' + match[1] + '"') !== -1,
+      'app.js queries #' + match[1] + ' which is missing from index.html'
+    );
+  }
+  while ((match = qsRe.exec(APP_JS)) !== null) {
+    checked += 1;
+    assert.ok(
+      html.indexOf('id="' + match[2] + '"') !== -1,
+      'app.js queries #' + match[2] + ' which is missing from index.html'
+    );
+  }
+  assert.ok(checked >= 18, 'expected at least 18 DOM queries in app.js, found ' + checked);
+});
+
+test('Phase 2 script load order: engine then app.js, both before </body>', function () {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const engineIndex = html.indexOf('hackslash_engine.js');
+  const appIndex = html.indexOf('app.js');
+  const bodyEnd = html.indexOf('</body>');
+  assert.ok(engineIndex !== -1, 'engine script missing');
+  assert.ok(appIndex !== -1, 'app.js script missing');
+  assert.ok(bodyEnd !== -1, 'closing body tag missing');
+  assert.ok(engineIndex < appIndex, 'app.js must load after the engine');
+  assert.ok(appIndex < bodyEnd, 'app.js must load before </body>');
+});
+
+test('Phase 2 engine platform integration: app.js references STAGE_PLATFORMS and computeCameraX', function () {
+  assert.ok(APP_JS.indexOf('STAGE_PLATFORMS') !== -1, 'app.js never references STAGE_PLATFORMS');
+  assert.ok(APP_JS.indexOf('computeCameraX') !== -1, 'app.js never references computeCameraX');
+});
+
+test('Phase 2 engine projectile integration: app.js references stepProjectiles, spawnEnemyProjectile, deflectProjectile', function () {
+  assert.ok(APP_JS.indexOf('stepProjectiles') !== -1, 'app.js never references stepProjectiles');
+  assert.ok(APP_JS.indexOf('spawnEnemyProjectile') !== -1, 'app.js never references spawnEnemyProjectile');
+  assert.ok(APP_JS.indexOf('deflectProjectile') !== -1, 'app.js never references deflectProjectile');
+});
+
+test('Phase 2 gargoyle asset: app.js loads assets/gargoyle_sheet.jpg', function () {
+  assert.ok(
+    APP_JS.indexOf('assets/gargoyle_sheet.jpg') !== -1,
+    'app.js never references assets/gargoyle_sheet.jpg'
+  );
+});
+
+test('Phase 2 HUD progress sync: app.js wires #hud-stage-progress', function () {
+  assert.ok(APP_JS.indexOf('hud-stage-progress') !== -1, 'app.js never references hud-stage-progress');
+  assert.ok(APP_JS.indexOf('hud-progress-fill') !== -1, 'app.js never updates the progress fill');
+});
+
+test('Phase 2 HUD boss alert sync: app.js wires #hud-boss-alert', function () {
+  assert.ok(APP_JS.indexOf('hud-boss-alert') !== -1, 'app.js never references hud-boss-alert');
+});
+
+test('Phase 2 complete anti-drift invariant: all 19 required DOM ids exist verbatim in index.html', function () {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const requiredIds = MANDATORY_DOM_IDS.concat(['hud-stage-progress', 'hud-boss-alert']);
+  assert.strictEqual(requiredIds.length, 19, 'expected 19 required DOM ids, got ' + requiredIds.length);
+  requiredIds.forEach(function (id) {
+    assert.ok(
+      html.indexOf('id="' + id + '"') !== -1,
+      'index.html is missing id="' + id + '"'
+    );
+  });
+});
+
 /* ---------- Summary ---------- */
 
 console.log('----------------------------------------');

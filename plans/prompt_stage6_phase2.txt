@@ -1,0 +1,58 @@
+## Architect Context Packet
+- Mode & Tier: audit (Tier 2 — Phase 2 upgrade of an existing finished Phase 1 project)
+- Project & Stack: shadow-blade-8bit | Web UI (HTML / CSS / Vanilla ES6+ JS, zero runtime dependencies) | HTML5 Canvas 800x450 viewport over a 3200px scrolling stage | Node.js headless `assert` test suite | Dual UMD engine (`window.HackSlashEngine` + `module.exports`)
+- Git Baseline: Phase 2 Segment 2 checkpoint 8067293 + uncommitted Segment 3 working-tree changes (app.js + test_hackslash.js)
+- Baseline Test Status: node test_hackslash.js -> 154 passed, 0 failed (106 Phase 1 + 32 Phase 2 Segment 1 + 8 Phase 2 Segment 2 + 8 Phase 2 Segment 3)
+- Canonical File Inventory:
+  * hackslash_engine.js (~640 lines, source — deterministic engine with Phase 2 platformer + projectile extensions)
+  * index.html (~131 lines, source — 19 mandatory DOM IDs: 17 Phase 1 + #hud-stage-progress + #hud-boss-alert)
+  * styles.css (~470 lines, source — NES cabinet styling + Phase 2 progress bar and boss alert banner)
+  * app.js (~940 lines, source — scrolling parallax renderer, chroma-key pipeline incl. gargoyle sheet, projectile/deflect FX, Web Audio whoosh/clink synths, HUD sync)
+  * test_hackslash.js (~1250 lines, test — 154 headless Node assertions, CLI gate `node test_hackslash.js`)
+  * plans/PHASE2_ROADMAP.md (the approved Phase 2 blueprint being audited against)
+- Mandatory Anti-Drift Invariants: every `getElementById` / `querySelector('#...')` ID queried in `app.js` must exist verbatim in `index.html` (19 required DOM IDs total: 17 Phase 1 + #hud-stage-progress + #hud-boss-alert).
+
+# Task: Phase 2 Stage 6 Code & Assertion Integrity Audit
+
+Conduct a strict code and assertion integrity audit across `hackslash_engine.js`,
+`index.html`, `styles.css`, `app.js`, and `test_hackslash.js` against the approved
+blueprint `plans/PHASE2_ROADMAP.md` (attached). Verify each item below and write
+the full audit to `plans/stage6_audit_phase2.md`.
+
+## 1. Assertion Integrity (zero tolerance)
+- Confirm that ALL 106 Phase 1 assertions, ALL 32 Phase 2 Segment 1 assertions,
+  and ALL 8 Phase 2 Segment 2 assertions remain byte-intact, unweakened, and
+  passing, with the 8 new Phase 2 Segment 3 assertions strictly appended
+  (154/154 total passing via `node test_hackslash.js`).
+- Confirm no assertion was deleted, commented out, loosened, broadened, skipped,
+  wrapped in a conditional bypass, or converted from strict to loose comparison
+  to make the suite pass.
+
+## 2. Feature Verification (against plans/PHASE2_ROADMAP.md)
+- Smooth 3-layer parallax scrolling camera (sky/moon 0.2x, castle battlements
+  0.6x, playfield 1.0x) with hero deadzone centering and boss gate lock at
+  x = 2400 (computeCameraX, cameraX synced per frame, ctx.translate world
+  rendering).
+- Platform one-way physics: jump-through from below, top-edge landing while
+  falling, walk-off gravity restore, groundY fallback.
+- Gargoyle ranged AI (perched on plat_3, windup timer, aimed bolt spawn within
+  attack range) and broadsword projectile deflection mechanics (early active
+  swing attackFrame < 8, +50 score, deflect spark, clink SFX).
+- Projectile whoosh (420 Hz -> 140 Hz) and metallic deflect clink
+  (1320 Hz -> 1980 Hz) Web Audio synths respecting the mute toggle.
+- HUD sync: #hud-stage-progress fill width from hero.x / bossLockX, and
+  #hud-boss-alert visibility gated on the boss lock while the Ogre lives.
+
+## 3. Anti-Drift DOM Verification (zero tolerance)
+- All 19 required DOM IDs exist verbatim in `index.html`.
+- 100% of `document.getElementById` and `querySelector('#...')` targets in
+  `app.js` exist verbatim in `index.html`; report the exact count found.
+- Script load order: `hackslash_engine.js` before `app.js`, both before
+  `</body>`.
+
+## Required Output Format
+- Pure Markdown only, zero tool calls, zero executable blocks.
+- A section-by-section verdict (INTACT / VIOLATION) per audit dimension above.
+- Any violation must be itemized with file, line context, and severity.
+- The final line must be exactly one of:
+  `AUDIT VERDICT: PASS` or `AUDIT VERDICT: FAIL`

@@ -18,7 +18,8 @@ Shadow Blade 8-Bit (NES Two-Button Hack & Slash Demo)
 - `app.js` — 60fps Canvas animator, chroma-key sprite processor, Web Audio SFX
 - `test_hackslash.js` — headless Node test suite (35+ assertions)
 - `assets/bg_stage.jpg`, `assets/hero_sheet.jpg`, `assets/skeleton_sheet.jpg`,
-  `assets/goblin_sheet.jpg`, `assets/ogre_sheet.jpg` — Nano Banana 2.1 assets
+  `assets/goblin_sheet.jpg`, `assets/ogre_sheet.jpg`, `assets/gargoyle_sheet.jpg`
+  — Nano Banana 2.1 assets
 - `plans/` — architect prompts and roadmaps
 
 ## CLI Verification Gate (Git Bash)
@@ -40,15 +41,14 @@ Every `getElementById` / `querySelector` / `data-*` selector queried in
 `test_hackslash.js`.
 
 ## Current Status
-Phase 1 COMPLETE (Segments 1-3). Phase 2 IN PROGRESS: Segment 1 COMPLETE
-(side-scrolling stage, STAGE_PLATFORMS, computeCameraX, platform one-way
-physics, gargoyle archetype, projectile spawn/deflect/step engine);
-Segment 2 COMPLETE (assets/gargoyle_sheet.jpg generated, #hud-stage-progress
-and #hud-boss-alert added to index.html/styles.css; 19 mandatory DOM IDs).
-Segment 3 PENDING (scrolling renderer + audio in app.js), then Stage 6
-audit. 146/146 headless assertions green via `node test_hackslash.js`
-(106 Phase 1 + 40 Phase 2, strictly additive). Phase 2 plan:
-`plans/PHASE2_ROADMAP.md`. Playable demo: open index.html in a browser.
+Phase 1 COMPLETE (Segments 1-3). Phase 2 COMPLETE (Segments 1-3):
+scrolling 3200px stage with 3-layer parallax, 6 one-way castle platforms,
+perched gargoyle ranged AI on plat_3, projectile spawn/deflect engine,
+#hud-stage-progress and #hud-boss-alert HUD, whoosh/clink audio synths.
+154/154 headless assertions green via `node test_hackslash.js`
+(106 Phase 1 + 48 Phase 2, strictly additive). Stage 6 Gemini 4 Argon
+audit: `AUDIT VERDICT: PASS` (plans/stage6_audit_phase2.md). 19 mandatory
+DOM IDs verified anti-drift. Playable demo: open index.html in a browser.
 
 ## Active File Map
 | File | Role |
@@ -62,7 +62,10 @@ audit. 146/146 headless assertions green via `node test_hackslash.js`
 | `plans/` | Roadmap, architect prompts, Stage 6 audit |
 
 ## Audit Outcome
-Stage 6 assertion integrity audit (plans/stage6_audit.md): all Segment 1 and
-Segment 2 assertions intact; one Segment 2 temporary guard ("app.js NOT
-linked") legitimately superseded in Segment 3 to enforce app.js linking and
-script order; Segment 3 tests appended cleanly. Secret hygiene: clean.
+Phase 1 Stage 6 assertion integrity audit (plans/stage6_audit.md): all
+Segment 1 and Segment 2 assertions intact; one Segment 2 temporary guard
+("app.js NOT linked") legitimately superseded in Segment 3 to enforce
+app.js linking and script order; Segment 3 tests appended cleanly.
+Phase 2 Stage 6 audit (plans/stage6_audit_phase2.md): all 106 Phase 1 and
+48 Phase 2 assertions intact and strictly additive; 154/154 green; 19 DOM
+IDs verified; `AUDIT VERDICT: PASS`. Secret hygiene: clean.

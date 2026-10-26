@@ -40,8 +40,15 @@ Zero dependencies.
     btnHack: document.getElementById('btn-hack'),
     btnStart: document.getElementById('btn-start-restart'),
     btnSample: document.getElementById('btn-load-sample'),
-    btnMute: document.getElementById('btn-mute-audio')
+    btnMute: document.getElementById('btn-mute-audio'),
+    stageProgress: document.getElementById('hud-stage-progress'),
+    bossAlert: document.getElementById('hud-boss-alert')
   };
+
+  // Inner fill of the stage progress bar (class-scoped, not an ID).
+  const stageProgressFill = els.stageProgress
+    ? els.stageProgress.querySelector('.hud-progress-fill')
+    : null;
 
   /* ---------- localStorage persistence ---------- */
 
@@ -151,6 +158,18 @@ Zero dependencies.
     playTone('triangle', 220, 110, 0.5, 0.12, 0.44);
   }
 
+  // Phase 2: gargoyle bolt launch - rapid descending sweep 420 Hz -> 140 Hz.
+  function sfxProjectileWhoosh() {
+    playNoise(0.11, 0.1, 0);
+    playTone('triangle', 420, 140, 0.11, 0.12, 0);
+  }
+
+  // Phase 2: broadsword parry - metallic clink sweeping 1320 Hz -> 1980 Hz.
+  function sfxSwordDeflect() {
+    playTone('square', 1320, 1980, 0.09, 0.12, 0);
+    playTone('triangle', 1980, 1320, 0.07, 0.08, 0.05);
+  }
+
   /* ---------- Asset loading + chroma-key background removal ---------- */
 
   const ASSET_SRCS = {
@@ -158,23 +177,25 @@ Zero dependencies.
     hero: 'assets/hero_sheet.jpg',
     skeleton: 'assets/skeleton_sheet.jpg',
     goblin: 'assets/goblin_sheet.jpg',
-    ogre: 'assets/ogre_sheet.jpg'
+    ogre: 'assets/ogre_sheet.jpg',
+    gargoyle: 'assets/gargoyle_sheet.jpg'
   };
 
   const sheets = {};
   let bgImage = null;
 
-  // A pixel is background ONLY when it is strict sheet black: every channel
-  // below CHROMA_KEY_BACKGROUND_LIMIT (25). The earlier broad passes
-  // (r < 55, Euclidean < 9000, then < 2600) are removed - they punched
-  // semi-transparent holes through dark goblin skin, skeleton armor
-  // shadows, and the hero's running pose, producing the screen-door
-  // translucency seen during ground movement. Alpha is strictly binary:
-  // background -> 0, character -> 255, never any intermediate value.
+  // A pixel is background when it is strict sheet black (every channel below
+  // CHROMA_KEY_BACKGROUND_LIMIT, i.e. 25) or solid magenta (#FF00FF family:
+  // bright red + blue with a dim green channel, used by the gargoyle sheet).
+  // The earlier broad passes are removed - they punched semi-transparent
+  // holes through dark goblin skin, skeleton armor shadows, and the hero's
+  // running pose. Alpha is strictly binary: background -> 0, character ->
+  // 255, never any intermediate value.
   function isBackgroundPixel(r, g, b) {
-    return r < CHROMA_KEY_BACKGROUND_LIMIT &&
-           g < CHROMA_KEY_BACKGROUND_LIMIT &&
-           b < CHROMA_KEY_BACKGROUND_LIMIT;
+    return (r > 200 && g < 50 && b > 200) ||
+           (r < CHROMA_KEY_BACKGROUND_LIMIT &&
+            g < CHROMA_KEY_BACKGROUND_LIMIT &&
+            b < CHROMA_KEY_BACKGROUND_LIMIT);
   }
 
   // Rebuilds every sprite sheet buffer with strictly binary alpha via an
@@ -252,6 +273,33 @@ Zero dependencies.
   let state = E.createInitialState();
   const input = { left: false, right: false, jump: false, hack: false };
 
+  // Phase 2: the Castle Gargoyle perched on plat_3 (x 1020-1240, top y 150).
+  // Perched at the platform's left edge so fired bolts clear the platform's
+  // solid box immediately while streaking down toward the approaching hero.
+  const GARGOYLE_TYPE = E.ENEMY_TYPES.gargoyle;
+  const gargoyle = {
+    type: 'gargoyle',
+    x: 1024,
+    y: 150,
+    width: GARGOYLE_TYPE.width,
+    height: GARGOYLE_TYPE.height,
+    facing: -1,
+    animState: 'idle',
+    hurtTimer: 0,
+    attackCooldown: 0,
+    attackCooldownFrames: 0,
+    shootTimer: GARGOYLE_TYPE.shootCooldownFrames
+  };
+
+  // Full-stage horizontal navigation across stageWidth (3200) plus a fresh
+  // gargoyle windup timer for the new run.
+  function enableStageMode() {
+    state.hero.scrollStage = true;
+    gargoyle.shootTimer = GARGOYLE_TYPE.shootCooldownFrames;
+  }
+
+  enableStageMode();
+
   let hitStop = 0;
   let shake = 0;
   let landSquash = 0;
@@ -279,6 +327,7 @@ Zero dependencies.
 
   function startGame() {
     state = E.createInitialState();
+    enableStageMode();
     resetEffects();
     prevHeroHp = state.hero.hp;
     prevWave = state.currentWave;
@@ -290,6 +339,7 @@ Zero dependencies.
 
   function loadSampleBossBattle() {
     state = E.createSampleBossBattleState();
+    enableStageMode();
     resetEffects();
     prevHeroHp = state.hero.hp;
     prevWave = state.currentWave;
@@ -387,6 +437,9 @@ Zero dependencies.
   function stepEffects() {
     for (let i = 0; i < state.particles.length; i++) {
       const p = state.particles[i];
+      // Engine particles (deflect_spark) carry ttl instead of life: adopt it
+      // once so the shared decay + culling below applies to them too.
+      if (p.life == null && p.ttl != null) p.life = p.ttl;
       p.x += p.vx;
       p.y += p.vy;
       p.vy += 0.15;
@@ -401,6 +454,62 @@ Zero dependencies.
     for (let i = floatingTexts.length - 1; i >= 0; i--) {
       if (floatingTexts[i].life <= 0) floatingTexts.splice(i, 1);
     }
+  }
+
+  /* ---------- Phase 2: gargoyle ranged AI + sword parries ---------- */
+
+  // Perched gargoyle behavior: faces the hero, ticks the windup timer, and
+  // fires an engine-normalized bolt at the hero center while the hero is
+  // inside the archetype attack range (420). The spit pose shows during
+  // the last 20 windup frames.
+  function stepGargoyleAI() {
+    if (state.status !== 'playing') return;
+    const hero = state.hero;
+    const gargoyleCenter = gargoyle.x + gargoyle.width / 2;
+    const heroCenter = hero.x + hero.width / 2;
+    gargoyle.facing = heroCenter < gargoyleCenter ? -1 : 1;
+    if (gargoyle.shootTimer > 0) gargoyle.shootTimer -= 1;
+    if (gargoyle.shootTimer > 0) return;
+    if (Math.abs(gargoyleCenter - heroCenter) > GARGOYLE_TYPE.attackRange) return;
+    state.projectiles.push(E.spawnEnemyProjectile(
+      gargoyleCenter,
+      gargoyle.y - gargoyle.height / 2,
+      heroCenter,
+      hero.y - hero.height / 2
+    ));
+    sfxProjectileWhoosh();
+    gargoyle.shootTimer = GARGOYLE_TYPE.shootCooldownFrames;
+  }
+
+  // Explicit app-side parry pass: the engine's deflectProjectile validates
+  // the active swing window and the broadsword hitbox, deactivates the
+  // bolt, awards +50, and returns the spark trigger. stepProjectiles runs
+  // the same check for bolts entering the hitbox mid-move, so every bolt
+  // is awarded exactly once (deflected bolts are inactive afterwards).
+  function resolveHeroDeflections() {
+    const hero = state.hero;
+    if (state.status !== 'playing') return 0;
+    if (!hero.isAttacking || hero.attackFrame >= 8) return 0;
+    let count = 0;
+    for (let i = 0; i < state.projectiles.length; i++) {
+      const proj = state.projectiles[i];
+      const res = E.deflectProjectile(proj, hero);
+      if (res) {
+        state.score += res.scoreAward;
+        state.deflectedCount = (state.deflectedCount || 0) + 1;
+        state.particles.push({
+          type: 'deflect_spark',
+          x: proj.x,
+          y: proj.y,
+          vx: 0,
+          vy: -1,
+          ttl: 16,
+          maxTtl: 16
+        });
+        count += 1;
+      }
+    }
+    return count;
   }
 
   /* ---------- Per-frame engine stepping ---------- */
@@ -441,6 +550,25 @@ Zero dependencies.
           }
         }
       });
+    }
+
+    stepGargoyleAI();
+
+    // Early active swings (attackFrame < 8) parry bolts via the engine's
+    // deflectProjectile: the bolt dies, +50 score is awarded, and a
+    // deflect_spark particle is emitted.
+    const prevDeflectedCount = state.deflectedCount || 0;
+    resolveHeroDeflections();
+    E.stepProjectiles(state, CONFIG, E.STAGE_PLATFORMS);
+    if ((state.deflectedCount || 0) > prevDeflectedCount) {
+      sfxSwordDeflect();
+      spawnParticles(
+        hero.x + hero.width / 2,
+        hero.y - hero.height / 2,
+        8,
+        ['#ffd24a', '#00e5ff', '#ffffff'],
+        2.5
+      );
     }
 
     E.stepEnemiesAI(state, CONFIG);
@@ -605,9 +733,17 @@ Zero dependencies.
     ctx.save();
     for (let i = 0; i < state.particles.length; i++) {
       const p = state.particles[i];
-      ctx.fillStyle = p.color;
+      // Phase 2 parry feedback: golden/cyan alternating starburst cross.
+      if (p.type === 'deflect_spark') {
+        ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 16));
+        ctx.fillStyle = Math.floor(tick / 2) % 2 === 0 ? '#ffd24a' : '#00e5ff';
+        ctx.fillRect(p.x - 6, p.y - 1, 12, 2);
+        ctx.fillRect(p.x - 1, p.y - 6, 2, 12);
+        continue;
+      }
+      ctx.fillStyle = p.color || '#ffffff';
       ctx.globalAlpha = Math.min(1, p.life / 20);
-      ctx.fillRect(p.x, p.y, p.size, p.size);
+      ctx.fillRect(p.x, p.y, p.size || 3, p.size || 3);
     }
     ctx.restore();
   }
@@ -628,8 +764,145 @@ Zero dependencies.
     ctx.restore();
   }
 
-  function render(now) {
-    const t = now || 0;
+  /* ---------- Phase 2: parallax layers + world-space scenery ---------- */
+
+  // Deterministic starfield (no Math.random at module scope needed - the
+  // positions are fixed pixel patterns like a real NES backdrop).
+  const STARS = (function () {
+    const list = [];
+    for (let i = 0; i < 42; i++) {
+      list.push({
+        x: (i * 137) % 800,
+        y: 16 + ((i * 61) % 210),
+        size: (i % 3) === 0 ? 2 : 1
+      });
+    }
+    return list;
+  })();
+
+  // Parallax layer 1 (0.2x): night sky, crescent moon, and stars.
+  function drawSkyLayer(cameraX) {
+    const drift = cameraX * 0.2;
+    ctx.fillStyle = '#0a0a18';
+    ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
+    ctx.fillStyle = '#c8c8d8';
+    for (let i = 0; i < STARS.length; i++) {
+      const sx = ((STARS[i].x - drift) % CONFIG.width + CONFIG.width) % CONFIG.width;
+      ctx.fillRect(sx, STARS[i].y, STARS[i].size, STARS[i].size);
+    }
+    const moonX = 620 - drift;
+    ctx.fillStyle = '#e8e8d8';
+    ctx.beginPath();
+    ctx.arc(moonX, 88, 46, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#0a0a18';
+    ctx.beginPath();
+    ctx.arc(moonX - 18, 80, 40, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Parallax layer 2 (0.6x): distant castle battlements and spires, tiled
+  // from the painted stage background so the seam never shows.
+  function drawCastleLayer(cameraX) {
+    const off = -((cameraX * 0.6) % CONFIG.width);
+    if (bgImage) {
+      ctx.drawImage(bgImage, off, 0, CONFIG.width, CONFIG.height);
+      ctx.drawImage(bgImage, off + CONFIG.width, 0, CONFIG.width, CONFIG.height);
+    } else {
+      ctx.fillStyle = '#141426';
+      for (let i = 0; i < 6; i++) {
+        const bx = off + i * 160 + 40;
+        ctx.fillRect(bx, 180, 70, CONFIG.groundY - 180);
+        ctx.fillRect(bx + 20, 130, 12, 50);
+      }
+    }
+  }
+
+  // Parallax layer 3 (1.0x, world space): full-length stone bridge ground.
+  function drawGroundLayer() {
+    ctx.fillStyle = '#1c1626';
+    ctx.fillRect(0, CONFIG.groundY, CONFIG.stageWidth, CONFIG.height - CONFIG.groundY);
+    ctx.fillStyle = '#2e2438';
+    ctx.fillRect(0, CONFIG.groundY, CONFIG.stageWidth, 4);
+  }
+
+  // Weathered gothic stone ledges: slate body, bright top edge, dark
+  // underside, crenellation notches, and vertical stone seams.
+  function drawPlatforms() {
+    for (let i = 0; i < E.STAGE_PLATFORMS.length; i++) {
+      const plat = E.STAGE_PLATFORMS[i];
+      ctx.fillStyle = '#0c0c13';
+      ctx.fillRect(plat.x, plat.y + 4, plat.width, plat.height - 4);
+      ctx.fillStyle = '#3a3a4a';
+      ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+      ctx.fillStyle = '#6b6b80';
+      ctx.fillRect(plat.x, plat.y, plat.width, 2);
+      ctx.fillStyle = '#23232e';
+      for (let nx = plat.x + 8; nx < plat.x + plat.width - 12; nx += 24) {
+        ctx.fillRect(nx, plat.y + 3, 10, 4);
+      }
+      for (let sx = plat.x + 20; sx < plat.x + plat.width - 4; sx += 40) {
+        ctx.fillRect(sx, plat.y + 2, 2, plat.height - 4);
+      }
+    }
+  }
+
+  // Boss arena gate marker at the x = 2400 lock line.
+  function drawBossGate() {
+    const gx = CONFIG.bossLockX;
+    ctx.fillStyle = '#14101c';
+    ctx.fillRect(gx - 10, CONFIG.groundY - 130, 14, 130);
+    ctx.fillRect(gx + 62, CONFIG.groundY - 130, 14, 130);
+    ctx.fillRect(gx - 16, CONFIG.groundY - 144, 104, 16);
+    ctx.fillStyle = '#3a3a4a';
+    ctx.fillRect(gx - 10, CONFIG.groundY - 130, 14, 4);
+    ctx.fillRect(gx + 62, CONFIG.groundY - 130, 14, 4);
+    ctx.fillStyle = '#6b6b80';
+    ctx.fillRect(gx - 16, CONFIG.groundY - 144, 104, 3);
+  }
+
+  // Perched gargoyle: spit pose (2) during the last 20 windup frames,
+  // otherwise perched idle (0). Faces the hero like every enemy.
+  function drawGargoyle() {
+    const pose = gargoyle.shootTimer < 20 ? 2 : 0;
+    drawEntity(sheets.gargoyle, pose, gargoyle, gargoyle.facing, 1, 0, 1, null);
+  }
+
+  // Active bolts: glowing purple/crimson core with a trailing spark wake.
+  function drawProjectiles() {
+    for (let i = 0; i < state.projectiles.length; i++) {
+      const proj = state.projectiles[i];
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = '#7a1f8e';
+      ctx.fillRect(proj.x - proj.vx * 2 - 3, proj.y - proj.vy * 2 - 3, 5, 5);
+      ctx.fillStyle = '#b03ad8';
+      ctx.fillRect(proj.x - proj.vx - 2, proj.y - proj.vy - 2, 4, 4);
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = '#d83a3a';
+      ctx.beginPath();
+      ctx.arc(proj.x, proj.y, proj.radius + 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#e8b0ff';
+      ctx.beginPath();
+      ctx.arc(proj.x, proj.y, proj.radius * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(proj.x - 2, proj.y - 2, 4, 4);
+      ctx.restore();
+    }
+  }
+
+  function render() {
+    // Smooth scrolling camera with hero deadzone centering and boss lock.
+    const cameraX = E.computeCameraX(
+      state.hero.x,
+      CONFIG.stageWidth,
+      CONFIG.viewportWidth,
+      state.bossLocked
+    );
+
     ctx.fillStyle = '#05050a';
     ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
 
@@ -639,29 +912,24 @@ Zero dependencies.
       shake *= 0.85;
     }
 
-    // Background with subtle parallax moon/cloud drift.
-    if (bgImage) {
-      const drift = Math.sin(t * 0.0002) * 10;
-      ctx.drawImage(bgImage, -14 + drift, 0, CONFIG.width + 28, CONFIG.height);
-    } else {
-      ctx.fillStyle = '#0a0a18';
-      ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
-      ctx.fillStyle = '#e8e8d8';
-      ctx.beginPath();
-      ctx.arc(CONFIG.width * 0.75, 90, 48, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // Layer 1 (0.2x): sky, moon, stars.
+    drawSkyLayer(cameraX);
+    // Layer 2 (0.6x): distant castle battlements and spires.
+    drawCastleLayer(cameraX);
 
-    // Stone bridge ground strip.
-    ctx.fillStyle = '#1c1626';
-    ctx.fillRect(0, CONFIG.groundY, CONFIG.width, CONFIG.height - CONFIG.groundY);
-    ctx.fillStyle = '#2e2438';
-    ctx.fillRect(0, CONFIG.groundY, CONFIG.width, 4);
-
+    // Layer 3 (1.0x): the playfield, in world space under camera translation.
+    ctx.save();
+    ctx.translate(-cameraX, 0);
+    drawGroundLayer();
+    drawPlatforms();
+    drawBossGate();
+    drawGargoyle();
     drawEnemies();
+    drawProjectiles();
     drawHero();
     drawParticles();
     drawFloatingTexts();
+    ctx.restore();
 
     ctx.restore();
   }
@@ -687,6 +955,22 @@ Zero dependencies.
     els.waveBadge.textContent = 'WAVE ' + state.currentWave + ' / ' + E.STAGE_WAVES.length;
     els.score.textContent = 'SCORE: ' + String(state.score).padStart(6, '0');
     els.combo.textContent = 'COMBO: x' + state.combo;
+
+    // Phase 2: stage progress toward the x = 2400 castle gate.
+    const progressPct = Math.min(100, Math.max(0, (hero.x / CONFIG.bossLockX) * 100));
+    if (stageProgressFill) {
+      stageProgressFill.style.width = progressPct + '%';
+    }
+
+    // Phase 2: boss arena alert - visible from the gate line while the Ogre
+    // lives, hidden once it is defeated.
+    const ogreAlive = state.enemies.some(function (e) { return e.type === 'ogre'; });
+    const alertActive = (state.bossLocked || hero.x >= CONFIG.bossLockX) && ogreAlive;
+    if (alertActive) {
+      els.bossAlert.classList.remove('hidden');
+    } else {
+      els.bossAlert.classList.add('hidden');
+    }
   }
 
   /* ---------- 60fps main loop ---------- */
