@@ -40,6 +40,6 @@ Every `getElementById` / `querySelector` / `data-*` selector queried in
 `test_hackslash.js`.
 
 ## Current Status
-Phase 1 / Segment 1 complete — `hackslash_engine.js` + `test_hackslash.js`
-(56/56 assertions green via `node test_hackslash.js`). Segment 2 (assets,
-index.html, styles.css) and Segment 3 (app.js) pending.
+Phase 1 / Segments 1-2 complete — engine + tests, 5 Nano Banana assets,
+index.html, styles.css (93/93 assertions green via `node test_hackslash.js`).
+Segment 3 (app.js renderer, chroma-key, Web Audio, anti-drift tests) pending.

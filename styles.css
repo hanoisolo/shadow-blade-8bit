@@ -1,0 +1,388 @@
+/*
+Shadow Blade 8-Bit - Retro NES arcade cabinet styling.
+Dark charcoal / slate framing, CRT scanline overlay, arcade bezel border,
+retro pixel typography. Zero dependencies.
+*/
+
+:root {
+  --cabinet-bg: #16161f;
+  --slate-dark: #23232e;
+  --slate-light: #2e2e3c;
+  --gold: #ffd24a;
+  --crimson: #d83a3a;
+  --hp-green: #4ade4a;
+  --hp-red: #d83a3a;
+  --text-dim: #9aa0b5;
+  --pixel-font: 'Press Start 2P', 'Courier New', monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--cabinet-bg);
+  font-family: var(--pixel-font);
+  color: var(--gold);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 12px;
+}
+
+.arcade-cabinet {
+  width: 100%;
+  max-width: 900px;
+  background: var(--slate-dark);
+  border: 6px solid var(--slate-light);
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: inset 0 0 0 2px #0c0c13, 0 10px 30px rgba(0, 0, 0, 0.7);
+}
+
+/* ---------- Marquee ---------- */
+
+.marquee {
+  text-align: center;
+  padding: 12px 0;
+  border: 4px solid var(--gold);
+  border-radius: 6px;
+  background: #0c0c13;
+  margin-bottom: 14px;
+}
+
+.marquee-title {
+  font-size: 26px;
+  letter-spacing: 4px;
+  color: var(--gold);
+  text-shadow: 3px 3px 0 var(--crimson);
+}
+
+.marquee-subtitle {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 8px;
+  letter-spacing: 2px;
+}
+
+/* ---------- CRT screen bezel ---------- */
+
+.screen-bezel {
+  border: 10px solid #101018;
+  border-radius: 8px;
+  background: #101018;
+  padding: 8px;
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.9);
+  margin-bottom: 14px;
+}
+
+.crt-frame {
+  position: relative;
+  border: 3px solid var(--slate-light);
+  border-radius: 4px;
+  overflow: hidden;
+  background: #000;
+}
+
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: #05050a;
+}
+
+.crt-scanlines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.22) 3px,
+    rgba(0, 0, 0, 0.22) 4px
+  );
+  z-index: 3;
+}
+
+/* ---------- HUD overlay ---------- */
+
+.hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: 10px 12px;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.hud-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hud-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hud-block.right {
+  align-items: flex-end;
+}
+
+.hud-label {
+  font-size: 8px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+.hud-text {
+  font-size: 9px;
+  color: #fff;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.badge {
+  color: var(--gold);
+  border: 2px solid var(--gold);
+  padding: 3px 6px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.hp-bar-outer {
+  width: 180px;
+  height: 12px;
+  border: 2px solid #fff;
+  background: #101018;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.hp-bar-outer.boss {
+  width: 220px;
+  height: 14px;
+  border-color: var(--crimson);
+}
+
+.hp-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(to bottom, #6bff6b 0%, var(--hp-green) 55%, #2f9e2f 100%);
+  transition: width 0.15s steps(6);
+}
+
+.boss-fill {
+  background: linear-gradient(to bottom, #ff6b6b 0%, var(--hp-red) 55%, #8e1f1f 100%);
+}
+
+.hidden {
+  display: none;
+}
+
+/* ---------- Status banner ---------- */
+
+.status-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  font-size: 20px;
+  color: #fff;
+  background: rgba(10, 10, 16, 0.82);
+  border: 4px solid var(--gold);
+  padding: 14px 26px;
+  letter-spacing: 3px;
+  text-shadow: 3px 3px 0 var(--crimson);
+  pointer-events: none;
+  text-align: center;
+}
+
+/* ---------- NES buttons ---------- */
+
+.nes-btn {
+  font-family: var(--pixel-font);
+  font-size: 10px;
+  color: #fff;
+  background: var(--slate-light);
+  border: 3px solid #fff;
+  border-radius: 4px;
+  padding: 12px 16px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  box-shadow: 0 4px 0 #0c0c13;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.nes-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #0c0c13;
+}
+
+.utility-controls {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.nes-btn.primary {
+  background: var(--crimson);
+  border-color: var(--gold);
+}
+
+.nes-btn.secondary {
+  background: #274a8e;
+  border-color: var(--gold);
+}
+
+.nes-btn.toggle {
+  background: #1f6e46;
+}
+
+/* ---------- D-pad + action buttons ---------- */
+
+.arcade-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 8px;
+  border: 4px solid var(--slate-light);
+  border-radius: 8px;
+  background: #101018;
+  margin-bottom: 14px;
+}
+
+.dpad {
+  display: flex;
+  gap: 10px;
+}
+
+.dpad-btn {
+  background: #3a3a4a;
+  border-color: var(--gold);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.action-btn {
+  border-radius: 50%;
+  width: 84px;
+  height: 84px;
+  padding: 8px;
+  font-size: 9px;
+}
+
+.btn-b {
+  background: #274a8e;
+}
+
+.btn-a {
+  background: var(--crimson);
+  border-color: var(--gold);
+}
+
+/* ---------- Enemy codex ---------- */
+
+.codex {
+  margin-bottom: 10px;
+}
+
+.codex-title {
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: var(--gold);
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.codex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.codex-card {
+  border: 3px solid var(--slate-light);
+  border-radius: 6px;
+  background: #0c0c13;
+  padding: 10px;
+  text-align: center;
+}
+
+.codex-name {
+  font-size: 10px;
+  color: #fff;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+.codex-sprite {
+  width: 100%;
+  height: 90px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: #000;
+  border: 2px solid var(--slate-light);
+  border-radius: 4px;
+}
+
+.codex-stats {
+  list-style: none;
+  margin-top: 8px;
+  font-size: 8px;
+  color: var(--text-dim);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+/* ---------- Footer ---------- */
+
+.cabinet-footer {
+  text-align: center;
+  font-size: 8px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  line-height: 1.8;
+  border-top: 3px solid var(--slate-light);
+  padding-top: 10px;
+}
+
+@media (max-width: 640px) {
+  .marquee-title {
+    font-size: 18px;
+  }
+  .hp-bar-outer {
+    width: 130px;
+  }
+  .action-btn {
+    width: 70px;
+    height: 70px;
+  }
+  .status-banner {
+    font-size: 13px;
+  }
+}

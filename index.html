@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SHADOW BLADE 8-BIT — NES Two-Button Hack &amp; Slash Demo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="arcade-cabinet">
+
+    <!-- Marquee -->
+    <header class="marquee">
+      <h1 class="marquee-title">SHADOW BLADE</h1>
+      <p class="marquee-subtitle">8-BIT — MOONLIT BRIDGE HACK &amp; SLASH</p>
+    </header>
+
+    <!-- Game screen bezel with CRT scanlines -->
+    <section class="screen-bezel">
+      <div class="crt-frame">
+        <canvas id="game-canvas" width="800" height="450"></canvas>
+        <div class="crt-scanlines" aria-hidden="true"></div>
+
+        <!-- HUD overlay -->
+        <div class="hud">
+          <div class="hud-row">
+            <div class="hud-block">
+              <div class="hud-label">HERO</div>
+              <div class="hp-bar-outer">
+                <div id="hud-hero-hp-bar" class="hp-bar-fill"></div>
+              </div>
+              <span id="hud-hero-hp-text" class="hud-text">HP: 100 / 100</span>
+            </div>
+            <div id="hud-boss-hp-container" class="hud-block boss-hp hidden">
+              <div class="hud-label">BOSS</div>
+              <div class="hp-bar-outer boss">
+                <div id="hud-boss-hp-bar" class="hp-bar-fill boss-fill"></div>
+              </div>
+            </div>
+            <div class="hud-block right">
+              <span id="hud-wave-badge" class="hud-text badge">WAVE 1 / 3</span>
+              <span id="hud-score" class="hud-text">SCORE: 000000</span>
+              <span id="hud-combo" class="hud-text">COMBO: x0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status banner -->
+        <div id="hud-status-banner" class="status-banner">STAGE 1 — PRESS START</div>
+      </div>
+    </section>
+
+    <!-- Utility & demo controls -->
+    <section class="utility-controls">
+      <button id="btn-start-restart" class="nes-btn primary" type="button">START / RESTART</button>
+      <button id="btn-load-sample" class="nes-btn secondary" type="button">LOAD BOSS BATTLE DEMO</button>
+      <button id="btn-mute-audio" class="nes-btn toggle" type="button">&#9834; SFX ON</button>
+    </section>
+
+    <!-- NES D-Pad + Two-Button arcade controls -->
+    <section class="arcade-controls">
+      <div class="dpad">
+        <button id="btn-left" class="nes-btn dpad-btn" type="button">&#9668; LEFT</button>
+        <button id="btn-right" class="nes-btn dpad-btn" type="button">RIGHT &#9658;</button>
+      </div>
+      <div class="action-buttons">
+        <button id="btn-jump" class="nes-btn action-btn btn-b" type="button">B - JUMP</button>
+        <button id="btn-hack" class="nes-btn action-btn btn-a" type="button">A - HACK</button>
+      </div>
+    </section>
+
+    <!-- Enemy Codex showcase -->
+    <section class="codex">
+      <h2 class="codex-title">ENEMY CODEX</h2>
+      <div id="enemy-codex-grid" class="codex-grid">
+        <article class="codex-card" data-enemy-type="goblin">
+          <h3 class="codex-name">Goblin Scout</h3>
+          <img class="codex-sprite" src="assets/goblin_sheet.jpg" alt="Goblin sprite sheet">
+          <ul class="codex-stats">
+            <li>HP: 30</li>
+            <li>DMG: 8</li>
+            <li>SPEED: FAST</li>
+            <li>SCORE: 100</li>
+          </ul>
+        </article>
+        <article class="codex-card" data-enemy-type="skeleton">
+          <h3 class="codex-name">Skeleton Warrior</h3>
+          <img class="codex-sprite" src="assets/skeleton_sheet.jpg" alt="Skeleton sprite sheet">
+          <ul class="codex-stats">
+            <li>HP: 60</li>
+            <li>DMG: 14</li>
+            <li>SPEED: MEDIUM</li>
+            <li>SCORE: 250</li>
+          </ul>
+        </article>
+        <article class="codex-card" data-enemy-type="ogre">
+          <h3 class="codex-name">Giant Ogre Boss</h3>
+          <img class="codex-sprite" src="assets/ogre_sheet.jpg" alt="Ogre sprite sheet">
+          <ul class="codex-stats">
+            <li>HP: 220</li>
+            <li>DMG: 28</li>
+            <li>SPEED: SLOW</li>
+            <li>SCORE: 1000</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <footer class="cabinet-footer">
+      <p>SHADOW BLADE 8-BIT — RETRO DEMO. KEYBOARD: A/D OR ARROWS MOVE, Z/J HACK, SPACE/K JUMP.</p>
+    </footer>
+  </div>
+
+  <script src="hackslash_engine.js"></script>
+</body>
+</html>

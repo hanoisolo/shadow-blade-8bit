@@ -1,0 +1,106 @@
+diff --git a/test_hackslash.js b/test_hackslash.js
+index 6e8c358..8312963 100644
+--- a/test_hackslash.js
++++ b/test_hackslash.js
+@@ -625,6 +625,101 @@ test('sample boss battle is playable for one AI step', function () {
+   assert.strictEqual(s.frameCount, 1);
+ });
+ 
++/* ---------- Segment 2 Asset & DOM Integrity Tests ---------- */
++
++const fs = require('fs');
++const path = require('path');
++
++const ASSETS = [
++  'assets/bg_stage.jpg',
++  'assets/hero_sheet.jpg',
++  'assets/skeleton_sheet.jpg',
++  'assets/goblin_sheet.jpg',
++  'assets/ogre_sheet.jpg'
++];
++
++ASSETS.forEach(function (assetPath) {
++  test('asset exists on disk: ' + assetPath, function () {
++    assert.ok(fs.existsSync(path.join(__dirname, assetPath)), 'missing file ' + assetPath);
++  });
++
++  test('asset larger than 10,000 bytes: ' + assetPath, function () {
++    const stats = fs.statSync(path.join(__dirname, assetPath));
++    assert.ok(stats.size > 10000, assetPath + ' is only ' + stats.size + ' bytes');
++  });
++
++  test('asset starts with JPEG magic bytes (FF D8 FF): ' + assetPath, function () {
++    const fd = fs.openSync(path.join(__dirname, assetPath), 'r');
++    const buf = Buffer.alloc(3);
++    fs.readSync(fd, buf, 0, 3, 0);
++    fs.closeSync(fd);
++    assert.strictEqual(buf[0], 0xFF, assetPath + ' byte 0');
++    assert.strictEqual(buf[1], 0xD8, assetPath + ' byte 1');
++    assert.strictEqual(buf[2], 0xFF, assetPath + ' byte 2');
++  });
++});
++
++test('index.html exists and is longer than 500 characters', function () {
++  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
++  assert.ok(html.length > 500, 'index.html is only ' + html.length + ' chars');
++});
++
++test('styles.css exists and is longer than 500 characters', function () {
++  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
++  assert.ok(css.length > 500, 'styles.css is only ' + css.length + ' chars');
++});
++
++const MANDATORY_DOM_IDS = [
++  'game-canvas',
++  'hud-hero-hp-bar',
++  'hud-hero-hp-text',
++  'hud-boss-hp-container',
++  'hud-boss-hp-bar',
++  'hud-wave-badge',
++  'hud-score',
++  'hud-combo',
++  'hud-status-banner',
++  'btn-left',
++  'btn-right',
++  'btn-jump',
++  'btn-hack',
++  'btn-start-restart',
++  'btn-load-sample',
++  'btn-mute-audio',
++  'enemy-codex-grid'
++];
++
++MANDATORY_DOM_IDS.forEach(function (id) {
++  test('mandatory DOM id present in index.html: #' + id, function () {
++    const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
++    assert.ok(
++      html.indexOf('id="' + id + '"') !== -1,
++      'index.html is missing id="' + id + '"'
++    );
++  });
++});
++
++test('game canvas has 800x450 dimensions in index.html', function () {
++  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
++  assert.ok(html.indexOf('width="800"') !== -1, 'canvas width=800 missing');
++  assert.ok(html.indexOf('height="450"') !== -1, 'canvas height=450 missing');
++});
++
++test('engine script tag linked before closing body in index.html', function () {
++  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
++  const scriptTag = '<script src="hackslash_engine.js"></script>';
++  assert.ok(html.indexOf(scriptTag) !== -1, 'engine script tag missing');
++  assert.ok(
++    html.indexOf(scriptTag) < html.indexOf('</body>'),
++    'engine script tag must appear before </body>'
++  );
++});
++
++test('app.js is NOT linked yet (Segment 3 scope)', function () {
++  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
++  assert.ok(html.indexOf('app.js') === -1, 'app.js linked prematurely');
++});
++
+ /* ---------- Summary ---------- */
+ 
+ console.log('----------------------------------------');
