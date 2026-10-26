@@ -819,6 +819,344 @@ test('app.js implements the SFX mute toggle labels (SFX ON / SFX OFF)', function
   assert.ok(APP_JS.indexOf('SFX OFF') !== -1, 'SFX OFF label missing');
 });
 
+/* ---------- Phase 2 — Segment 1 Platformer & Projectile Tests ---------- */
+
+test('GAME_CONFIG Phase 2 stage extensions (stageWidth 3200, viewport 800, bossLock 2400)', function () {
+  assert.strictEqual(CONFIG.stageWidth, 3200);
+  assert.strictEqual(CONFIG.viewportWidth, 800);
+  assert.strictEqual(CONFIG.bossLockX, 2400);
+  assert.strictEqual(CONFIG.width, 800);
+  assert.strictEqual(CONFIG.height, 450);
+});
+
+test('STAGE_PLATFORMS has exactly 6 platforms with unique ids', function () {
+  assert.ok(Array.isArray(E.STAGE_PLATFORMS));
+  assert.strictEqual(E.STAGE_PLATFORMS.length, 6);
+  const ids = E.STAGE_PLATFORMS.map(function (p) { return p.id; });
+  ids.forEach(function (id) {
+    assert.strictEqual(ids.indexOf(id), ids.lastIndexOf(id), 'duplicate platform id ' + id);
+  });
+});
+
+test('STAGE_PLATFORMS coordinates stay within the 3200px stage above ground', function () {
+  E.STAGE_PLATFORMS.forEach(function (p) {
+    assert.ok(p.x >= 380, p.id + ' starts before x=380');
+    assert.ok(p.x + p.width <= 3200, p.id + ' extends past stageWidth');
+    assert.ok(p.y > 0 && p.y < CONFIG.groundY, p.id + ' y out of range');
+    assert.ok(p.width > 0 && p.height > 0, p.id + ' has non-positive size');
+  });
+});
+
+test('STAGE_PLATFORMS exact geometry for all six ledges (plat_3 gargoyle perch)', function () {
+  const expected = [
+    { id: 'plat_1', x: 380, y: 260, width: 180, height: 16 },
+    { id: 'plat_2', x: 680, y: 200, width: 160, height: 16 },
+    { id: 'plat_3', x: 1020, y: 150, width: 220, height: 16 },
+    { id: 'plat_4', x: 1420, y: 240, width: 200, height: 16 },
+    { id: 'plat_5', x: 1780, y: 180, width: 180, height: 16 },
+    { id: 'plat_6', x: 2100, y: 220, width: 190, height: 16 }
+  ];
+  E.STAGE_PLATFORMS.forEach(function (p, i) {
+    assert.strictEqual(p.id, expected[i].id);
+    assert.strictEqual(p.x, expected[i].x);
+    assert.strictEqual(p.y, expected[i].y);
+    assert.strictEqual(p.width, expected[i].width);
+    assert.strictEqual(p.height, expected[i].height);
+  });
+});
+
+test('ENEMY_TYPES gargoyle archetype stats', function () {
+  const g = E.ENEMY_TYPES.gargoyle;
+  assert.strictEqual(g.type, 'gargoyle');
+  assert.strictEqual(g.maxHp, 40);
+  assert.strictEqual(g.speed, 0);
+  assert.strictEqual(g.damage, 12);
+  assert.strictEqual(g.width, 48);
+  assert.strictEqual(g.height, 48);
+  assert.strictEqual(g.scoreValue, 350);
+  assert.strictEqual(g.attackRange, 420);
+  assert.strictEqual(g.shootCooldownFrames, 90);
+  assert.strictEqual(g.perchedPlatformId, 'plat_3');
+});
+
+test('computeCameraX clamps left edge at 0', function () {
+  assert.strictEqual(E.computeCameraX(100, 3200, 800, false), 0);
+  assert.strictEqual(E.computeCameraX(374, 3200, 800, false), 0);
+});
+
+test('computeCameraX tracks the hero mid-stage', function () {
+  assert.strictEqual(E.computeCameraX(1600, 3200, 800, false), 1226);
+});
+
+test('computeCameraX clamps right edge at stageWidth - viewportWidth (2400)', function () {
+  assert.strictEqual(E.computeCameraX(3100, 3200, 800, false), 2400);
+});
+
+test('computeCameraX enforces boss lock at 2400', function () {
+  assert.strictEqual(E.computeCameraX(1500, 3200, 800, true), 2400);
+});
+
+test('computeCameraX auto-locks once heroX reaches the gate line (2400)', function () {
+  assert.strictEqual(E.computeCameraX(2450, 3200, 800, false), 2400);
+});
+
+test('falling hero lands on plat_1 top surface (y = 260)', function () {
+  const s = newState([]);
+  s.hero.x = 400;
+  s.hero.y = 200;
+  s.hero.vy = 0;
+  s.hero.isGrounded = false;
+  for (let i = 0; i < 40; i++) {
+    E.stepHeroPhysics(s.hero, {});
+  }
+  assert.strictEqual(s.hero.y, 260);
+  assert.strictEqual(s.hero.isGrounded, true);
+});
+
+test('platform landing zeroes vy and records currentPlatformId', function () {
+  const s = newState([]);
+  s.hero.x = 400;
+  s.hero.y = 200;
+  s.hero.vy = 0;
+  s.hero.isGrounded = false;
+  for (let i = 0; i < 40; i++) {
+    E.stepHeroPhysics(s.hero, {});
+  }
+  assert.strictEqual(s.hero.vy, 0);
+  assert.strictEqual(s.hero.currentPlatformId, 'plat_1');
+});
+
+test('upward jump passes through platform without altering vy (jump-through)', function () {
+  const s = newState([]);
+  s.hero.x = 400;
+  E.stepHeroPhysics(s.hero, { jump: true });
+  E.stepHeroPhysics(s.hero, {});
+  E.stepHeroPhysics(s.hero, {});
+  approx(s.hero.vy, -11.55, 'vy frame 3 must be pure gravity');
+  approx(s.hero.y, 323.4, 'y frame 3 must be pure gravity');
+  assert.strictEqual(s.hero.isGrounded, false);
+  assert.strictEqual(s.hero.currentPlatformId, null);
+});
+
+test('hero jump arc from ground passes up through plat_1 and lands back on it', function () {
+  const s = newState([]);
+  s.hero.x = 400;
+  E.stepHeroPhysics(s.hero, { jump: true });
+  let peakY = s.hero.y;
+  for (let i = 0; i < 45; i++) {
+    E.stepHeroPhysics(s.hero, {});
+    if (s.hero.y < peakY) peakY = s.hero.y;
+  }
+  assert.ok(peakY < 260, 'hero never rose above plat_1 top (peak ' + peakY + ')');
+  assert.strictEqual(s.hero.y, 260);
+  assert.strictEqual(s.hero.currentPlatformId, 'plat_1');
+  assert.strictEqual(s.hero.isGrounded, true);
+});
+
+test('walking off a platform edge clears grounded state and platform id', function () {
+  const s = newState([]);
+  s.hero.x = 400;
+  s.hero.y = 200;
+  s.hero.vy = 0;
+  s.hero.isGrounded = false;
+  for (let i = 0; i < 40; i++) {
+    E.stepHeroPhysics(s.hero, {});
+  }
+  assert.strictEqual(s.hero.currentPlatformId, 'plat_1');
+  while (s.hero.x < 564) {
+    E.stepHeroPhysics(s.hero, { right: true });
+  }
+  assert.strictEqual(s.hero.isGrounded, false);
+  assert.strictEqual(s.hero.currentPlatformId, null);
+});
+
+test('frame after walk-off restores airborne gravity (vy > 0, hero descends)', function () {
+  const s = newState([]);
+  s.hero.x = 400;
+  s.hero.y = 200;
+  s.hero.vy = 0;
+  s.hero.isGrounded = false;
+  for (let i = 0; i < 40; i++) {
+    E.stepHeroPhysics(s.hero, {});
+  }
+  const yBefore = s.hero.y;
+  while (s.hero.isGrounded) {
+    E.stepHeroPhysics(s.hero, { right: true });
+  }
+  E.stepHeroPhysics(s.hero, {});
+  assert.ok(s.hero.vy > 0, 'gravity not restored, vy=' + s.hero.vy);
+  assert.ok(s.hero.y > yBefore, 'hero did not descend after walk-off');
+});
+
+test('hero falling past all platforms lands on groundY (360) at a platform-free x', function () {
+  const s = newState([]);
+  s.hero.x = 600;
+  s.hero.y = 200;
+  s.hero.vy = 0;
+  s.hero.isGrounded = false;
+  for (let i = 0; i < 40; i++) {
+    E.stepHeroPhysics(s.hero, {});
+  }
+  assert.strictEqual(s.hero.y, 360);
+  assert.strictEqual(s.hero.isGrounded, true);
+  assert.strictEqual(s.hero.currentPlatformId, null);
+});
+
+test('spawnEnemyProjectile returns a normalized trajectory at speed 5.5', function () {
+  const p = E.spawnEnemyProjectile(100, 100, 400, 340);
+  assert.ok(Math.abs(Math.hypot(p.vx, p.vy) - 5.5) < 1e-9, 'speed magnitude wrong');
+  assert.strictEqual(p.speed, 5.5);
+  assert.strictEqual(p.radius, 8);
+  assert.strictEqual(p.damage, 12);
+  assert.strictEqual(p.active, true);
+});
+
+test('spawnEnemyProjectile horizontal aim produces vx = 5.5, vy = 0', function () {
+  const p = E.spawnEnemyProjectile(100, 100, 300, 100);
+  approx(p.vx, 5.5, 'vx');
+  approx(p.vy, 0, 'vy');
+  assert.strictEqual(p.x, 100);
+  assert.strictEqual(p.y, 100);
+});
+
+test('spawnEnemyProjectile produces unique ids across calls', function () {
+  const a = E.spawnEnemyProjectile(0, 0, 10, 10);
+  const b = E.spawnEnemyProjectile(0, 0, 10, 10);
+  assert.notStrictEqual(a.id, b.id);
+});
+
+test('stepProjectiles advances projectiles along their velocity vector', function () {
+  const s = newState([]);
+  s.projectiles.push({ id: 'ptest', x: 400, y: 100, vx: 2, vy: 1, radius: 8, damage: 12, active: true });
+  E.stepProjectiles(s);
+  assert.strictEqual(s.projectiles.length, 1);
+  approx(s.projectiles[0].x, 402, 'x after step');
+  approx(s.projectiles[0].y, 101, 'y after step');
+});
+
+test('projectile hit deals 12 damage to a vulnerable hero', function () {
+  const s = newState([]);
+  s.hero.x = 100;
+  s.projectiles.push({ id: 'ph1', x: 120, y: 330, vx: -1, vy: 0, radius: 8, damage: 12, active: true });
+  E.stepProjectiles(s);
+  assert.strictEqual(s.hero.hp, 88);
+});
+
+test('projectile hit triggers invulnerability frames (invulnTimer = 30)', function () {
+  const s = newState([]);
+  s.hero.x = 100;
+  s.projectiles.push({ id: 'ph2', x: 120, y: 330, vx: -1, vy: 0, radius: 8, damage: 12, active: true });
+  E.stepProjectiles(s);
+  assert.strictEqual(s.hero.invulnTimer, CONFIG.hero.invulnFrames);
+  assert.strictEqual(s.hero.animState, 'hurt');
+});
+
+test('projectile hit knocks the hero back away from the bolt', function () {
+  const s = newState([]);
+  s.hero.x = 100;
+  s.projectiles.push({ id: 'ph3', x: 120, y: 330, vx: -1, vy: 0, radius: 8, damage: 12, active: true });
+  E.stepProjectiles(s);
+  assert.strictEqual(s.hero.x, 94);
+});
+
+test('invulnerable hero takes 0 damage from a projectile', function () {
+  const s = newState([]);
+  s.hero.x = 100;
+  s.hero.invulnTimer = 5;
+  s.projectiles.push({ id: 'ph4', x: 120, y: 330, vx: -1, vy: 0, radius: 8, damage: 12, active: true });
+  E.stepProjectiles(s);
+  assert.strictEqual(s.hero.hp, 100);
+  assert.strictEqual(s.hero.invulnTimer, 5);
+});
+
+test('spent projectile is deactivated and removed from state.projectiles', function () {
+  const s = newState([]);
+  s.hero.x = 100;
+  const proj = { id: 'ph5', x: 120, y: 330, vx: -1, vy: 0, radius: 8, damage: 12, active: true };
+  s.projectiles.push(proj);
+  E.stepProjectiles(s);
+  assert.strictEqual(proj.active, false);
+  assert.strictEqual(s.projectiles.length, 0);
+});
+
+test('deflectProjectile succeeds on early active swing and deactivates the bolt', function () {
+  const hero = { x: 100, y: 360, width: 52, height: 64, facing: 1, isAttacking: true, attackFrame: 0 };
+  const proj = { id: 'pd1', x: 200, y: 330, vx: -5, vy: 0, radius: 8, damage: 12, active: true };
+  const res = E.deflectProjectile(proj, hero);
+  assert.ok(res, 'deflection failed');
+  assert.strictEqual(res.scoreAward, 50);
+  assert.strictEqual(res.deflected, true);
+  assert.strictEqual(proj.active, false);
+  assert.strictEqual(proj.deflected, true);
+  const far = { id: 'pd2', x: 400, y: 330, vx: -5, vy: 0, radius: 8, damage: 12, active: true };
+  assert.strictEqual(E.deflectProjectile(far, hero), null);
+  assert.strictEqual(far.active, true);
+});
+
+test('stepProjectiles deflection adds +50 score without hero damage', function () {
+  const s = newState([]);
+  s.hero.x = 100;
+  s.hero.isAttacking = true;
+  s.hero.attackFrame = 0;
+  s.projectiles.push({ id: 'pd3', x: 210, y: 330, vx: -5, vy: 0, radius: 8, damage: 12, active: true });
+  E.stepProjectiles(s);
+  assert.strictEqual(s.score, 50);
+  assert.strictEqual(s.hero.hp, 100);
+  assert.strictEqual(s.projectiles.length, 0);
+});
+
+test('stepProjectiles deflection emits a deflect_spark particle', function () {
+  const s = newState([]);
+  s.hero.x = 100;
+  s.hero.isAttacking = true;
+  s.hero.attackFrame = 0;
+  s.projectiles.push({ id: 'pd4', x: 210, y: 330, vx: -5, vy: 0, radius: 8, damage: 12, active: true });
+  E.stepProjectiles(s);
+  assert.strictEqual(s.particles.length, 1);
+  assert.strictEqual(s.particles[0].type, 'deflect_spark');
+});
+
+test('late attack frame (attackFrame >= 8) fails to deflect and the hero takes the hit', function () {
+  const s = newState([]);
+  s.hero.x = 100;
+  s.hero.isAttacking = true;
+  s.hero.attackFrame = 8;
+  s.projectiles.push({ id: 'pd5', x: 160, y: 330, vx: -5, vy: 0, radius: 8, damage: 12, active: true });
+  E.stepProjectiles(s);
+  assert.strictEqual(s.score, 0);
+  assert.strictEqual(s.hero.hp, 88);
+  assert.strictEqual(s.projectiles.length, 0);
+});
+
+test('hero facing away cannot deflect and takes the hit', function () {
+  const s = newState([]);
+  s.hero.x = 100;
+  s.hero.facing = -1;
+  s.hero.isAttacking = true;
+  s.hero.attackFrame = 0;
+  s.projectiles.push({ id: 'pd6', x: 160, y: 330, vx: -5, vy: 0, radius: 8, damage: 12, active: true });
+  E.stepProjectiles(s);
+  assert.strictEqual(s.score, 0);
+  assert.strictEqual(s.hero.hp, 88);
+});
+
+test('projectiles are culled past stage edge, into ground, or on platform solids', function () {
+  const a = newState([]);
+  a.projectiles.push({ id: 'pc1', x: 3204, y: 100, vx: 5, vy: 0, radius: 8, damage: 12, active: true });
+  E.stepProjectiles(a);
+  assert.strictEqual(a.projectiles.length, 0, 'stage-edge projectile not culled');
+
+  const b = newState([]);
+  b.projectiles.push({ id: 'pc2', x: 600, y: 354, vx: 0, vy: 5, radius: 8, damage: 12, active: true });
+  E.stepProjectiles(b);
+  assert.strictEqual(b.projectiles.length, 0, 'ground projectile not culled');
+
+  const c = newState([]);
+  c.projectiles.push({ id: 'pc3', x: 400, y: 250, vx: 0, vy: 5, radius: 8, damage: 12, active: true });
+  E.stepProjectiles(c);
+  assert.strictEqual(c.projectiles.length, 0, 'platform-solid projectile not culled');
+});
+
 /* ---------- Summary ---------- */
 
 console.log('----------------------------------------');

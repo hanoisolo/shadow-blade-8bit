@@ -40,10 +40,14 @@ Every `getElementById` / `querySelector` / `data-*` selector queried in
 `test_hackslash.js`.
 
 ## Current Status
-Phase 1 COMPLETE (Segments 1-3). 106/106 headless assertions green via
-`node test_hackslash.js` (56 engine + 37 asset/DOM + 13 controller/anti-drift).
-Stage 6 Gemini 4 Argon audit: `AUDIT VERDICT: PASS`
-(plans/stage6_audit.md). Playable demo: open index.html in a browser.
+Phase 1 COMPLETE (Segments 1-3). Phase 2 IN PROGRESS: Segment 1 COMPLETE
+(side-scrolling stage, STAGE_PLATFORMS, computeCameraX, platform one-way
+physics, gargoyle archetype, projectile spawn/deflect/step engine).
+138/138 headless assertions green via `node test_hackslash.js`
+(106 Phase 1 + 32 Phase 2 Segment 1, strictly additive). Phase 2 plan:
+`plans/PHASE2_ROADMAP.md`. Pending: Segment 2 (gargoyle asset + HUD DOM),
+Segment 3 (scrolling renderer + audio), Stage 6 audit. Playable demo: open
+index.html in a browser.
 
 ## Active File Map
 | File | Role |

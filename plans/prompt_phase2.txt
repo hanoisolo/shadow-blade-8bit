@@ -1,0 +1,120 @@
+## Architect Context Packet
+- Mode & Tier: roadmap (Tier 2 — focused feature / upgrade of an existing finished Phase 1 project)
+- Project & Stack: shadow-blade-8bit | Web UI (HTML / CSS / Vanilla ES6+ JS, zero runtime dependencies) | HTML5 Canvas 800x450, Node.js headless `assert` test suite | Dual UMD engine (`window.HackSlashEngine` + `module.exports`)
+- Git Baseline: 93eb083df0b88ee1f1f7df28b78909a765477ef9 | Working tree: CLEAN
+- Baseline Test Status: node test_hackslash.js -> 106 passed, 0 failed (56 engine + 37 asset/DOM + 13 controller/anti-drift)
+- Canonical File Inventory:
+  * hackslash_engine.js (364 lines, source)
+  * app.js (712 lines, source — renderer, chroma-key, audio, input, persistence)
+  * index.html (117 lines, source — 17 mandatory DOM IDs)
+  * styles.css (388 lines, source — retro NES styling)
+  * test_hackslash.js (835 lines, test — CLI gate, 106 assertions)
+  * assets/bg_stage.jpg, hero_sheet.jpg, skeleton_sheet.jpg, goblin_sheet.jpg, ogre_sheet.jpg (pixel art assets)
+  * plans/ (roadmaps, prompts, audits)
+- Mandatory Anti-Drift Invariants: Web UI stack row — every `getElementById`, `querySelector`, `querySelectorAll`, and `data-*` selector queried in `app.js` must exist verbatim in `index.html`; asserted headlessly in `test_hackslash.js`. New Phase 2 DOM IDs that MUST be covered by the Segment 3 anti-drift test: `#hud-stage-progress`, `#hud-boss-alert`. Existing 17 DOM IDs and all 106 existing assertions are IMMUTABLE — Phase 2 tests are strictly additive.
+
+# Task: Shadow Blade 8-Bit — Phase 2 Master Roadmap
+
+Write a complete 3-segment Phase 2 blueprint to `plans/PHASE2_ROADMAP.md`.
+Goal: expand the existing single-screen Stage 1 hack & slash demo into a full
+side-scrolling platformer with elevated castle ledges, an elevated ranged
+projectile enemy (Castle Gargoyle/Cultist), and a boss-gate arena lock for the
+Giant Ogre.
+
+## Hard Planning Constraints (non-negotiable)
+
+- Output pure Markdown only. Zero tool calls and zero executable code fences
+  pretending to be executed.
+- Break Phase 2 into exactly 3 segments, 1-3 files max per segment.
+- Every segment ends in a plain CLI verification gate runnable in Git Bash:
+  `node --check hackslash_engine.js`, `node --check app.js`,
+  `node test_hackslash.js`. No PowerShell cmdlets, no GUI tools.
+- NEVER weaken, delete, or modify any of the existing 106 assertions in
+  `test_hackslash.js`. All Phase 2 tests must be strictly additive (appended,
+  not edited). The suite grows from 106 to 136+ assertions.
+- No shell redirects (`>`, `2>`) or shell variables anywhere; asset generation
+  uses `python ../generate_image.py` with `--out` flags.
+- Zero new runtime dependencies; vanilla JS only.
+
+## Phase 2 Feature Specification
+
+### 1. Stage Progression & Camera Scrolling
+- Expand `GAME_CONFIG.width` into `stageWidth = 3200` with viewport
+  `viewportWidth = 800`.
+- Implement `computeCameraX(heroX, stageWidth, viewportWidth, bossLocked)`
+  centering the hero with smooth deadzone clamping (`0` to
+  `stageWidth - viewportWidth`).
+- Boss Arena Gate: When `heroX >= 2400`, trigger boss encounter lock: camera
+  locks at `cameraX = 2400` until the Giant Ogre is defeated.
+
+### 2. Platforms & Elevation Physics
+- Define `STAGE_PLATFORMS` array containing at least 6 elevated castle
+  ledges/battlement platforms at strategic heights (`y = 260`, `y = 200`,
+  `y = 150`) across the 3200px stage.
+- Update `stepHeroPhysics(hero, input, config, platforms)`:
+  - Check one-way landing: hero only lands if falling (`vy >= 0`) and feet
+    cross top edge from above (`prevY + height <= plat.y && hero.y + height >= plat.y`).
+  - Jumping through from underneath must NOT block hero upward velocity.
+  - Walking off ledges restores airborne gravity.
+
+### 3. Elevated Ranged Enemy & Projectile Engine
+- Add new enemy type `gargoyle`:
+  `{ type: 'gargoyle', maxHp: 40, speed: 0, damage: 12, width: 48, height: 48, scoreValue: 350, shootCooldownFrames: 90, perchedPlatformId: 'plat_3' }`.
+- Pure Projectile Management in `stepProjectiles(state, config)`:
+  - Projectiles move along velocity vector (`vx`, `vy`).
+  - Collides with hero (deals damage, triggers invulnerability frames and
+    knockback).
+  - Sword Deflection: If hero is actively slashing
+    (`hero.isAttacking && hero.attackFrame < 8`) and sword hitbox intersects
+    projectile, deflect/destroy projectile, increment score by +50, and emit
+    deflect spark particle.
+  - Out of bounds or platform collision destroys projectile.
+
+### 4. Segment 1 Contract (`hackslash_engine.js` + `test_hackslash.js`)
+- Exported pure constants & functions: `STAGE_PLATFORMS`, `computeCameraX`,
+  `stepHeroPhysics` (with platform awareness), `stepProjectiles`,
+  `spawnEnemyProjectile`, `deflectProjectile`.
+- Add 30+ native Node `assert` unit tests to `test_hackslash.js` verifying:
+  platform jump-through from below, top-ledge landing, walking off platform
+  gravity drop, camera clamping math, projectile motion, hero projectile
+  damage, sword-swing projectile deflection, and boss arena camera lock at
+  x=2400. Total test target: 136+ green assertions.
+
+### 5. Segment 2 Contract (Nano Banana 2.1 Asset + DOM Extensions)
+- Generate `assets/gargoyle_sheet.jpg` via `python ../generate_image.py`.
+- Update `index.html` & `styles.css`: Add `#hud-stage-progress` (visual
+  mini-progress bar showing hero distance across the 3200px stage toward the
+  castle gate), `#hud-boss-alert` banner, and platform styling.
+- Append Segment 2 DOM and asset magic-byte tests in `test_hackslash.js`
+  (strictly additive).
+
+### 6. Segment 3 Contract (`app.js` Scrolling Renderer & Audio Synth)
+- Offscreen chroma-key processing for `assets/gargoyle_sheet.jpg`.
+- Multi-layer canvas parallax rendering: moon/sky (`0.2x`), castle
+  battlements (`0.6x`), ground bridge & platforms (`1.0x`).
+- Platform drawing, animated gargoyle idle/spit poses, glowing projectile
+  rendering with particle trails, and sword deflect spark effect.
+- 8-bit Web Audio synth addition: projectile whoosh sound and metallic sword
+  deflect clink.
+- Anti-drift test asserting 100% of DOM IDs queried in `app.js` exist in
+  `index.html` (must include the new `#hud-stage-progress` and
+  `#hud-boss-alert`).
+
+### 7. Stage 6 Audit Gate
+- Phase 2 ends with a Gemini 4 Argon code & assertion integrity audit
+  requiring `AUDIT VERDICT: PASS`: verify no pre-existing assertion was
+  weakened, skipped, deleted, or broadened, and that all new Phase 2
+  assertions are additive.
+
+## Required Roadmap Output Format
+
+For each of the 3 segments, specify:
+- Segment number, title, and goal.
+- Exact files to modify or create (1-3 files max).
+- Precise function/constant signatures and data structures to implement.
+- The exact number of new assertions added and what each verifies.
+- The plain CLI verification gate command for that segment.
+
+End the roadmap with the mandatory audit verdict line template:
+`AUDIT: PASS - assertions intact, no weakening detected` (or the FAIL variant
+with itemized weaknesses if any constraint cannot be met).

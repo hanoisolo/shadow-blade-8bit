@@ -16,6 +16,9 @@ module.exports (Node). No DOM access, no network, zero dependencies.
   const GAME_CONFIG = {
     width: 800,
     height: 450,
+    stageWidth: 3200,
+    viewportWidth: 800,
+    bossLockX: 2400,
     groundY: 360,
     gravity: 0.65,
     hero: {
@@ -65,8 +68,31 @@ module.exports (Node). No DOM access, no network, zero dependencies.
       scoreValue: 1000,
       attackRange: 76,
       attackCooldownFrames: 80
+    },
+    gargoyle: {
+      type: 'gargoyle',
+      maxHp: 40,
+      speed: 0,
+      damage: 12,
+      width: 48,
+      height: 48,
+      scoreValue: 350,
+      attackRange: 420,
+      shootCooldownFrames: 90,
+      perchedPlatformId: 'plat_3'
     }
   };
+
+  // One-way elevated castle ledges across the 3200px stage. All platforms
+  // start at x >= 380 so single-screen Phase 1 play never collides with them.
+  const STAGE_PLATFORMS = Object.freeze([
+    Object.freeze({ id: 'plat_1', x: 380, y: 260, width: 180, height: 16 }),
+    Object.freeze({ id: 'plat_2', x: 680, y: 200, width: 160, height: 16 }),
+    Object.freeze({ id: 'plat_3', x: 1020, y: 150, width: 220, height: 16 }),
+    Object.freeze({ id: 'plat_4', x: 1420, y: 240, width: 200, height: 16 }),
+    Object.freeze({ id: 'plat_5', x: 1780, y: 180, width: 180, height: 16 }),
+    Object.freeze({ id: 'plat_6', x: 2100, y: 220, width: 190, height: 16 })
+  ]);
 
   const STAGE_WAVES = [
     { wave: 1, name: 'Wave 1: Bridge Ambush', roster: ['goblin', 'goblin', 'goblin', 'skeleton'] },
@@ -79,9 +105,30 @@ module.exports (Node). No DOM access, no network, zero dependencies.
   const HERO_KNOCKBACK_DISTANCE = 6;
   const ENEMY_HURT_FRAMES = 10;
   const COMBO_TIMER_FRAMES = 120;
+  const PROJECTILE_DEFLECT_SCORE = 50;
+  const PROJECTILE_SPAWN_SPEED = 5.5;
+  const PROJECTILE_DAMAGE = 12;
+  const SWORD_DEFLECT_WINDOW = 8;
+
+  let projectileCounter = 0;
 
   function clamp(value, min, max) {
     return value < min ? min : (value > max ? max : value);
+  }
+
+  // Centers the hero in the viewport with a small deadzone offset and clamps
+  // the camera to [0, stageWidth - viewportWidth]. While the boss arena gate
+  // is locked (or the hero has reached the gate line), the camera locks at
+  // the arena position stageWidth - viewportWidth (2400) until released.
+  function computeCameraX(heroX, stageWidth, viewportWidth, bossLocked) {
+    stageWidth = stageWidth || GAME_CONFIG.stageWidth;
+    viewportWidth = viewportWidth || GAME_CONFIG.viewportWidth;
+    const maxCameraX = Math.max(0, stageWidth - viewportWidth);
+    if (bossLocked || heroX >= maxCameraX) {
+      return maxCameraX;
+    }
+    const targetX = heroX - (viewportWidth / 2) + 26;
+    return clamp(Math.round(targetX), 0, maxCameraX);
   }
 
   function makeEnemy(type, x) {
@@ -130,6 +177,7 @@ module.exports (Node). No DOM access, no network, zero dependencies.
       maxHp: config.hero.maxHp,
       facing: 1,
       isGrounded: true,
+      currentPlatformId: null,
       width: config.hero.width,
       height: config.hero.height,
       isAttacking: false,
@@ -143,7 +191,11 @@ module.exports (Node). No DOM access, no network, zero dependencies.
     return {
       hero: hero,
       enemies: options.enemies || spawnWaveEnemies(currentWave),
+      projectiles: [],
       particles: [],
+      cameraX: 0,
+      bossLocked: false,
+      bossDefeated: false,
       currentWave: currentWave,
       score: options.score || 0,
       combo: options.combo || 0,
@@ -155,11 +207,16 @@ module.exports (Node). No DOM access, no network, zero dependencies.
 
   // Advances one physics frame for the hero.
   // input: { left: boolean, right: boolean, jump: boolean }
-  function stepHeroPhysics(hero, input, config) {
+  // platforms defaults to STAGE_PLATFORMS; pass null to disable platform logic.
+  // One-way platforms: the hero only lands while falling and only when the
+  // feet cross the platform top edge from above. Rising heroes pass through.
+  function stepHeroPhysics(hero, input, config, platforms) {
     config = config || GAME_CONFIG;
+    if (platforms === undefined) platforms = STAGE_PLATFORMS;
     input = input || {};
     const left = !!input.left;
     const right = !!input.right;
+    const prevY = hero.y;
 
     hero.vx = 0;
     if (left && !right) {
@@ -169,19 +226,62 @@ module.exports (Node). No DOM access, no network, zero dependencies.
       hero.vx = config.hero.speed;
       hero.facing = 1;
     }
-    hero.x = clamp(hero.x + hero.vx, 0, config.width - hero.width);
+
+    // Single-screen bounds (Phase 1 behavior) unless the hero is inside the
+    // boss arena or explicitly flagged for stage scrolling.
+    const stageMode = !!hero.bossLocked || !!hero.scrollStage;
+    const minX = hero.bossLocked ? (config.bossLockX || GAME_CONFIG.bossLockX) : 0;
+    const maxX = (stageMode ? (config.stageWidth || config.width) : config.width) - hero.width;
+    hero.x = clamp(hero.x + hero.vx, minX, maxX);
+
+    // Walk-off: a hero standing on an elevated platform with no platform
+    // still under the feet becomes airborne and gravity resumes.
+    if (hero.isGrounded && hero.y < config.groundY) {
+      let supported = false;
+      if (platforms) {
+        for (let i = 0; i < platforms.length; i++) {
+          const plat = platforms[i];
+          if (hero.x + hero.width > plat.x && hero.x < plat.x + plat.width && hero.y === plat.y) {
+            supported = true;
+            break;
+          }
+        }
+      }
+      if (!supported) {
+        hero.isGrounded = false;
+        hero.currentPlatformId = null;
+      }
+    }
 
     if (input.jump && hero.isGrounded) {
       hero.vy = config.hero.jumpForce;
       hero.isGrounded = false;
+      hero.currentPlatformId = null;
     }
 
     hero.vy += config.gravity;
     hero.y += hero.vy;
+
+    if (hero.vy >= 0 && platforms) {
+      for (let i = 0; i < platforms.length; i++) {
+        const plat = platforms[i];
+        const overlapsX = hero.x + hero.width > plat.x && hero.x < plat.x + plat.width;
+        if (!overlapsX) continue;
+        if (prevY <= plat.y && hero.y >= plat.y) {
+          hero.y = plat.y;
+          hero.vy = 0;
+          hero.isGrounded = true;
+          hero.currentPlatformId = plat.id;
+          break;
+        }
+      }
+    }
+
     if (hero.y >= config.groundY) {
       hero.y = config.groundY;
       hero.vy = 0;
       hero.isGrounded = true;
+      hero.currentPlatformId = null;
     }
 
     if (hero.isAttacking) {
@@ -275,6 +375,22 @@ module.exports (Node). No DOM access, no network, zero dependencies.
     state.frameCount += 1;
 
     const hero = state.hero;
+
+    // Boss arena gate: latches once the hero reaches the gate line and holds
+    // until the boss is defeated. Keeps the camera synced to the lock.
+    if (state.bossDefeated) {
+      state.bossLocked = false;
+    } else if (!state.bossLocked && hero.x >= (config.bossLockX || GAME_CONFIG.bossLockX)) {
+      state.bossLocked = true;
+    }
+    hero.bossLocked = state.bossLocked;
+    state.cameraX = computeCameraX(
+      hero.x,
+      config.stageWidth || GAME_CONFIG.stageWidth,
+      config.viewportWidth || GAME_CONFIG.viewportWidth,
+      state.bossLocked
+    );
+
     for (let i = 0; i < state.enemies.length; i++) {
       const enemy = state.enemies[i];
       if (enemy.hp <= 0) continue;
@@ -332,6 +448,136 @@ module.exports (Node). No DOM access, no network, zero dependencies.
     }
   }
 
+  // Returns a projectile aimed from (sourceX, sourceY) toward
+  // (targetX, targetY) with a normalized velocity of the given speed.
+  function spawnEnemyProjectile(sourceX, sourceY, targetX, targetY, speed) {
+    if (speed === undefined) speed = PROJECTILE_SPAWN_SPEED;
+    const dx = targetX - sourceX;
+    const dy = targetY - sourceY;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    projectileCounter += 1;
+    return {
+      id: 'proj_' + projectileCounter,
+      x: sourceX,
+      y: sourceY,
+      vx: (dx / len) * speed,
+      vy: (dy / len) * speed,
+      speed: speed,
+      radius: 8,
+      damage: PROJECTILE_DAMAGE,
+      active: true,
+      deflected: false
+    };
+  }
+
+  // Sword deflection: only during the early active swing frames, and only
+  // when the broadsword hitbox reaches the projectile. Deactivates the
+  // projectile and returns the score award plus a spark particle trigger;
+  // returns null when no deflection occurs.
+  function deflectProjectile(projectile, hero) {
+    if (!projectile || !projectile.active) return null;
+    if (!hero || !hero.isAttacking || hero.attackFrame >= SWORD_DEFLECT_WINDOW) return null;
+
+    let xStart;
+    let xEnd;
+    if (hero.facing >= 0) {
+      xStart = hero.x + hero.width;
+      xEnd = xStart + GAME_CONFIG.hero.attackRange;
+    } else {
+      xEnd = hero.x;
+      xStart = xEnd - GAME_CONFIG.hero.attackRange;
+    }
+    const yTop = hero.y - hero.height;
+    const yBottom = hero.y;
+    const r = projectile.radius || 8;
+
+    const overlaps = (projectile.x - r) <= xEnd && (projectile.x + r) >= xStart &&
+      (projectile.y - r) <= yBottom && (projectile.y + r) >= yTop;
+    if (!overlaps) return null;
+
+    projectile.active = false;
+    projectile.deflected = true;
+    return {
+      deflected: true,
+      scoreAward: PROJECTILE_DEFLECT_SCORE,
+      spark: { type: 'deflect_spark', x: projectile.x, y: projectile.y }
+    };
+  }
+
+  // Advances every active projectile one frame: movement, sword deflection,
+  // hero damage with invulnerability and knockback, then culling against the
+  // stage bounds, the ground line, and platform solids.
+  function stepProjectiles(state, config, platforms) {
+    config = config || GAME_CONFIG;
+    if (platforms === undefined) platforms = STAGE_PLATFORMS;
+    if (!state.projectiles) state.projectiles = [];
+    const hero = state.hero;
+    const stageWidth = config.stageWidth || config.width;
+
+    for (let i = 0; i < state.projectiles.length; i++) {
+      const proj = state.projectiles[i];
+      if (!proj || !proj.active) continue;
+      proj.x += proj.vx;
+      proj.y += proj.vy;
+
+      const deflection = deflectProjectile(proj, hero);
+      if (deflection) {
+        state.score += deflection.scoreAward;
+        state.deflectedCount = (state.deflectedCount || 0) + 1;
+        state.particles.push({
+          type: 'deflect_spark',
+          x: proj.x,
+          y: proj.y,
+          vx: 0,
+          vy: -1,
+          ttl: 16,
+          maxTtl: 16,
+          active: true
+        });
+        continue;
+      }
+
+      const r = proj.radius || 8;
+      const heroTop = hero.y - hero.height;
+      const hitsHero = (proj.x + r) >= hero.x && (proj.x - r) <= hero.x + hero.width &&
+        (proj.y + r) >= heroTop && (proj.y - r) <= hero.y;
+      if (hitsHero) {
+        if (hero.invulnTimer <= 0) {
+          hero.hp -= (proj.damage || PROJECTILE_DAMAGE);
+          if (hero.hp < 0) hero.hp = 0;
+          hero.invulnTimer = config.hero.invulnFrames;
+          hero.animState = 'hurt';
+          state.combo = 0;
+          state.comboTimer = 0;
+          const knockDirection = proj.vx >= 0 ? 1 : -1;
+          const minX = hero.bossLocked ? (config.bossLockX || GAME_CONFIG.bossLockX) : 0;
+          const maxX = (hero.bossLocked ? stageWidth : config.width) - hero.width;
+          hero.x = clamp(hero.x + knockDirection * HERO_KNOCKBACK_DISTANCE, minX, maxX);
+        }
+        proj.active = false;
+        continue;
+      }
+
+      const outOfBounds = (proj.x - r) > stageWidth || (proj.x + r) < 0 ||
+        (proj.y + r) >= config.groundY || (proj.y + r) < 0;
+      let hitPlatform = false;
+      if (!outOfBounds && platforms) {
+        for (let p = 0; p < platforms.length; p++) {
+          const plat = platforms[p];
+          if ((proj.x + r) >= plat.x && (proj.x - r) <= plat.x + plat.width &&
+            (proj.y + r) >= plat.y && (proj.y - r) <= plat.y + plat.height) {
+            hitPlatform = true;
+            break;
+          }
+        }
+      }
+      if (outOfBounds || hitPlatform) {
+        proj.active = false;
+      }
+    }
+    state.projectiles = state.projectiles.filter(function (p) { return p && p.active; });
+  }
+
   // Pre-populated mid-action Wave 3 boss battle for 1-click testing
   // via #btn-load-sample: hero at 85 HP vs skeleton, goblin, and ogre boss.
   function createSampleBossBattleState(config) {
@@ -355,8 +601,13 @@ module.exports (Node). No DOM access, no network, zero dependencies.
     GAME_CONFIG: GAME_CONFIG,
     ENEMY_TYPES: ENEMY_TYPES,
     STAGE_WAVES: STAGE_WAVES,
+    STAGE_PLATFORMS: STAGE_PLATFORMS,
     createInitialState: createInitialState,
+    computeCameraX: computeCameraX,
     stepHeroPhysics: stepHeroPhysics,
+    spawnEnemyProjectile: spawnEnemyProjectile,
+    deflectProjectile: deflectProjectile,
+    stepProjectiles: stepProjectiles,
     performHeroHack: performHeroHack,
     stepEnemiesAI: stepEnemiesAI,
     createSampleBossBattleState: createSampleBossBattleState
