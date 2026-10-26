@@ -183,6 +183,31 @@ Zero dependencies.
     return off;
   }
 
+  // Builds a solid-color silhouette of one sprite frame for hit flashes.
+  // Samples strictly from the processed, transparent chroma-keyed canvas
+  // (never the raw JPEG <img>), and the fill is masked to the sprite pixels
+  // by globalCompositeOperation = 'source-in', so no bounding box or
+  // rectangular artifact can ever appear over the character.
+  const tintCache = {};
+  function tintedFrame(sheetCanvas, type, poseIndex, color) {
+    const key = type + ':' + poseIndex + ':' + color;
+    if (!tintCache[key]) {
+      const fw = sheetCanvas.width / 4;
+      const fh = sheetCanvas.height;
+      const off = document.createElement('canvas');
+      off.width = fw;
+      off.height = fh;
+      const offCtx = off.getContext('2d');
+      offCtx.drawImage(sheetCanvas, poseIndex * fw, 0, fw, fh, 0, 0, fw, fh);
+      offCtx.globalCompositeOperation = 'source-in';
+      offCtx.fillStyle = color;
+      offCtx.fillRect(0, 0, fw, fh);
+      offCtx.globalCompositeOperation = 'source-over';
+      tintCache[key] = off;
+    }
+    return tintCache[key];
+  }
+
   Object.keys(ASSET_SRCS).forEach(function (key) {
     const img = new Image();
     img.onload = function () {
@@ -452,7 +477,7 @@ Zero dependencies.
     return 0;
   }
 
-  function drawEntity(sheetCanvas, poseIndex, ent, facing, scaleY, bob, alpha) {
+  function drawEntity(sheetCanvas, poseIndex, ent, facing, scaleY, bob, alpha, tintColor) {
     const w = ent.width;
     const h = ent.height;
     ctx.save();
@@ -462,7 +487,14 @@ Zero dependencies.
     if (sheetCanvas) {
       const fw = sheetCanvas.width / 4;
       const fh = sheetCanvas.height;
-      ctx.drawImage(sheetCanvas, poseIndex * fw, 0, fw, fh, -w / 2, -h, w, h);
+      const frame = tintColor
+        ? tintedFrame(sheetCanvas, ent.type || 'hero', poseIndex, tintColor)
+        : null;
+      if (frame) {
+        ctx.drawImage(frame, -w / 2, -h, w, h);
+      } else {
+        ctx.drawImage(sheetCanvas, poseIndex * fw, 0, fw, fh, -w / 2, -h, w, h);
+      }
     } else {
       // Procedural pixel fallback while the sheet is still decoding.
       ctx.fillStyle = ent.type === 'ogre' ? '#8e4a1f'
@@ -486,7 +518,9 @@ Zero dependencies.
     }
     const bob = hero.animState === 'run' ? Math.sin(tick * 0.4) * 2 : 0;
     let alpha = 1;
-    if (hero.invulnTimer > 0 && Math.floor(tick / 3) % 2 === 0) alpha = 0.35;
+    if (hero.invulnTimer > 0) {
+      alpha = Math.floor(tick / 2) % 2 === 0 ? 1 : 0.3;
+    }
 
     drawEntity(sheets.hero, heroPose(hero), hero, hero.facing, scaleY, bob, alpha);
 
@@ -515,14 +549,11 @@ Zero dependencies.
       const sheet = sheets[enemy.type];
       const bob = (enemy.animState === 'walk' || enemy.animState === 'run')
         ? Math.sin(tick * 0.35 + i) * 2 : 0;
-      drawEntity(sheet, enemyPose(enemy), enemy, enemy.facing, 1, bob, 1);
-      if (enemy.hurtTimer > 0) {
-        ctx.save();
-        ctx.globalAlpha = 0.45;
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(enemy.x, enemy.y - enemy.height, enemy.width, enemy.height);
-        ctx.restore();
-      }
+      // 8-bit hurt feedback: white chroma-keyed silhouette flickering at
+      // 0.3/1.0 alpha every 2 frames - never a solid bounding box.
+      const hurt = enemy.hurtTimer > 0 && sheet;
+      const alpha = hurt ? (Math.floor(tick / 2) % 2 === 0 ? 1 : 0.3) : 1;
+      drawEntity(sheet, enemyPose(enemy), enemy, enemy.facing, 1, bob, alpha, hurt ? '#ffffff' : null);
     }
   }
 
