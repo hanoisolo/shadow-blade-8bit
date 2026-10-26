@@ -12,7 +12,10 @@ Zero dependencies.
   const CONFIG = E.GAME_CONFIG;
   const STORAGE_KEY = 'shadow_blade_8bit_state_v1';
   const CHROMA_KEY_THRESHOLD = 28;
-  const CHROMA_KEY_MAX_DISTANCE = 2600;
+  // Strict sheet-background strip bound (25): a pixel is keyed out ONLY
+  // when every channel falls below this. Derived from the core threshold so
+  // the tested constant stays the single source of truth.
+  const CHROMA_KEY_BACKGROUND_LIMIT = CHROMA_KEY_THRESHOLD - 3;
   const HIT_STOP_FRAMES = 4;
   const BANNER_FRAMES = 120;
 
@@ -161,28 +164,24 @@ Zero dependencies.
   const sheets = {};
   let bgImage = null;
 
-  // A pixel is stripped ONLY when it is hard background black: all channels
-  // below CHROMA_KEY_THRESHOLD (28 < 32, satisfying the hard-black check),
-  // or a very low Euclidean color magnitude (r*r + g*g + b*b < 2600). The
-  // earlier broad passes (r < 55, distance < 9000) are removed: they punched
-  // transparent holes through dark goblin skin, skeleton armor shadows, and
-  // the hero's running pose, producing a translucent screen-door look.
-  // Interior character shading (skin, armor, weapons, hair) stays 100%
-  // solid and opaque.
-  function isChromaKeyPixel(r, g, b) {
-    if (r < CHROMA_KEY_THRESHOLD &&
-        g < CHROMA_KEY_THRESHOLD &&
-        b < CHROMA_KEY_THRESHOLD) {
-      return true;
-    }
-    return (r * r + g * g + b * b) < CHROMA_KEY_MAX_DISTANCE;
+  // A pixel is background ONLY when it is strict sheet black: every channel
+  // below CHROMA_KEY_BACKGROUND_LIMIT (25). The earlier broad passes
+  // (r < 55, Euclidean < 9000, then < 2600) are removed - they punched
+  // semi-transparent holes through dark goblin skin, skeleton armor
+  // shadows, and the hero's running pose, producing the screen-door
+  // translucency seen during ground movement. Alpha is strictly binary:
+  // background -> 0, character -> 255, never any intermediate value.
+  function isBackgroundPixel(r, g, b) {
+    return r < CHROMA_KEY_BACKGROUND_LIMIT &&
+           g < CHROMA_KEY_BACKGROUND_LIMIT &&
+           b < CHROMA_KEY_BACKGROUND_LIMIT;
   }
 
-  // Strips the black sheet background into transparent alpha via an
+  // Rebuilds every sprite sheet buffer with strictly binary alpha via an
   // offscreen canvas + getImageData/putImageData across the entire sheet
-  // width (including the leftmost idle frame boundaries), isolating only
-  // the background so sprites composite cleanly and fully solid over the
-  // stage.
+  // width (including the leftmost idle frame boundaries): background pixels
+  // become fully transparent, every other pixel is forced fully opaque, so
+  // sprites composite cleanly and 100% solid over the stage.
   function processSheetChromaKey(img) {
     const off = document.createElement('canvas');
     off.width = img.naturalWidth;
@@ -194,8 +193,10 @@ Zero dependencies.
       const imageData = offCtx.getImageData(0, 0, off.width, off.height);
       const d = imageData.data;
       for (let i = 0; i < d.length; i += 4) {
-        if (isChromaKeyPixel(d[i], d[i + 1], d[i + 2])) {
+        if (isBackgroundPixel(d[i], d[i + 1], d[i + 2])) {
           d[i + 3] = 0;
+        } else {
+          d[i + 3] = 255;
         }
       }
       offCtx.putImageData(imageData, 0, 0);
@@ -487,18 +488,26 @@ Zero dependencies.
 
   /* ---------- Rendering ---------- */
 
+  // Pose selection is LOCKED during locomotion: run always draws the
+  // dedicated running pose (1). Never alternate pose 0/1 on animFrame at
+  // 60fps - that rapid temporal alternation rendered as ghostly
+  // translucency during ground movement. Only hack (3), jump (2), and
+  // idle (0) select their own single pose.
   function heroPose(hero) {
     if (hero.animState === 'hack') return 3;
     if (hero.animState === 'jump') return 2;
-    if (hero.animState === 'run') return hero.animFrame < 2 ? 1 : 0;
+    if (hero.animState === 'run') return 1;
     return 0;
   }
 
+  // Locomotion lock for enemies as well: walk/run draw the movement pose
+  // (1) without per-tick alternation. Hurt uses the hit pose (3), an
+  // active strike flashes the attack pose (2), otherwise idle (0).
   function enemyPose(enemy) {
     if (enemy.hurtTimer > 0) return 3;
     if (enemy.attackCooldown > enemy.attackCooldownFrames - 10) return 2;
     if (enemy.animState === 'walk' || enemy.animState === 'run') {
-      return Math.floor(tick / 8) % 2 === 0 ? 1 : 0;
+      return 1;
     }
     return 0;
   }
