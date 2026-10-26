@@ -12,6 +12,8 @@ Zero dependencies.
   const CONFIG = E.GAME_CONFIG;
   const STORAGE_KEY = 'shadow_blade_8bit_state_v1';
   const CHROMA_KEY_THRESHOLD = 28;
+  const CHROMA_KEY_SOFT_THRESHOLD = 55;
+  const CHROMA_KEY_MAX_DISTANCE = 9000;
   const HIT_STOP_FRAMES = 4;
   const BANNER_FRAMES = 120;
 
@@ -157,9 +159,30 @@ Zero dependencies.
   const sheets = {};
   let bgImage = null;
 
-  // Strips solid / near-black (RGB all < CHROMA_KEY_THRESHOLD) pixels into
-  // transparent alpha via an offscreen canvas + getImageData/putImageData,
-  // so sprites composite cleanly over the stage background.
+  // A pixel is stripped when it is hard black (CHROMA_KEY_THRESHOLD core
+  // pass), near-black (soft pass, r/g/b all < 55), or dark enough that its
+  // Euclidean color magnitude (r*r + g*g + b*b) falls below 9000. The two
+  // broader passes remove the dark-gray JPEG compression halo that rings
+  // every sprite - especially around the leftmost idle frame at x = 0 -
+  // which previously rendered as solid black background boxes.
+  function isChromaKeyPixel(r, g, b) {
+    if (r < CHROMA_KEY_THRESHOLD &&
+        g < CHROMA_KEY_THRESHOLD &&
+        b < CHROMA_KEY_THRESHOLD) {
+      return true;
+    }
+    if (r < CHROMA_KEY_SOFT_THRESHOLD &&
+        g < CHROMA_KEY_SOFT_THRESHOLD &&
+        b < CHROMA_KEY_SOFT_THRESHOLD) {
+      return true;
+    }
+    return (r * r + g * g + b * b) < CHROMA_KEY_MAX_DISTANCE;
+  }
+
+  // Strips background pixels into transparent alpha via an offscreen canvas
+  // + getImageData/putImageData across the entire sheet width (including the
+  // leftmost idle frame boundaries), so sprites composite cleanly over the
+  // stage background with zero black boxes.
   function processSheetChromaKey(img) {
     const off = document.createElement('canvas');
     off.width = img.naturalWidth;
@@ -170,17 +193,18 @@ Zero dependencies.
       const imageData = offCtx.getImageData(0, 0, off.width, off.height);
       const d = imageData.data;
       for (let i = 0; i < d.length; i += 4) {
-        if (d[i] < CHROMA_KEY_THRESHOLD &&
-            d[i + 1] < CHROMA_KEY_THRESHOLD &&
-            d[i + 2] < CHROMA_KEY_THRESHOLD) {
+        if (isChromaKeyPixel(d[i], d[i + 1], d[i + 2])) {
           d[i + 3] = 0;
         }
       }
       offCtx.putImageData(imageData, 0, 0);
+      return off;
     } catch (err) {
-      // Canvas tainted or unavailable: fall back to the raw sheet.
+      // Tainted or unavailable canvas: NEVER fall back to the raw JPEG
+      // image (it would render a solid black box). Return null so the
+      // procedural pixel fallback is used instead.
+      return null;
     }
-    return off;
   }
 
   // Builds a solid-color silhouette of one sprite frame for hit flashes.
@@ -477,6 +501,10 @@ Zero dependencies.
     return 0;
   }
 
+  // Draws one entity. Alpha is strictly 1.0 during all normal movement
+  // (idle, run, walk, jump); sub-1.0 alpha is only ever passed by callers
+  // during active damage frames (enemy hurtTimer / hero invulnTimer), and
+  // the save/restore pair guarantees no alpha or transform leaks.
   function drawEntity(sheetCanvas, poseIndex, ent, facing, scaleY, bob, alpha, tintColor) {
     const w = ent.width;
     const h = ent.height;
@@ -496,14 +524,18 @@ Zero dependencies.
         ctx.drawImage(sheetCanvas, poseIndex * fw, 0, fw, fh, -w / 2, -h, w, h);
       }
     } else {
-      // Procedural pixel fallback while the sheet is still decoding.
+      // Procedural pixel fallback while the sheet is still decoding or the
+      // chroma key was unavailable. Draws a blocky three-band figure, never
+      // the raw JPEG and never a single solid bounding rectangle.
+      ctx.fillStyle = '#0c0c13';
+      ctx.fillRect(-w / 2, -h, w, h * 0.25);
       ctx.fillStyle = ent.type === 'ogre' ? '#8e4a1f'
         : ent.type === 'goblin' ? '#4a9e4a'
         : ent.type === 'skeleton' ? '#d8d8c8'
         : '#c9a86a';
-      ctx.fillRect(-w / 2, -h, w, h);
-      ctx.strokeStyle = '#0c0c13';
-      ctx.strokeRect(-w / 2, -h, w, h);
+      ctx.fillRect(-w / 2, -h + h * 0.25, w, h * 0.5);
+      ctx.fillStyle = '#1c1626';
+      ctx.fillRect(-w / 2, -h * 0.25, w, h * 0.25);
     }
     ctx.restore();
   }
@@ -558,16 +590,20 @@ Zero dependencies.
   }
 
   function drawParticles() {
+    if (state.particles.length === 0) return;
+    ctx.save();
     for (let i = 0; i < state.particles.length; i++) {
       const p = state.particles[i];
       ctx.fillStyle = p.color;
       ctx.globalAlpha = Math.min(1, p.life / 20);
       ctx.fillRect(p.x, p.y, p.size, p.size);
     }
-    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   function drawFloatingTexts() {
+    if (floatingTexts.length === 0) return;
+    ctx.save();
     ctx.font = '10px "Courier New", monospace';
     ctx.textAlign = 'center';
     for (let i = 0; i < floatingTexts.length; i++) {
@@ -578,8 +614,7 @@ Zero dependencies.
       ctx.fillStyle = f.color;
       ctx.fillText(f.text, f.x, f.y);
     }
-    ctx.globalAlpha = 1;
-    ctx.textAlign = 'start';
+    ctx.restore();
   }
 
   function render(now) {
