@@ -156,10 +156,29 @@ module.exports (Node). No DOM access, no network, zero dependencies.
     };
   }
 
-  function spawnWaveEnemies(waveNumber) {
+  // Spawns a wave's roster. In scrolling-stage mode the wave appears AHEAD
+  // of the hero (just past the right edge of the viewport) so the player
+  // always sees the next wave approaching; spawning at a fixed x=420 left
+  // waves invisible behind the camera after the hero had scrolled right,
+  // which read as a frozen screen after clearing the previous wave. The
+  // spawn origin is clamped so the last enemy never starts past stageWidth.
+  function spawnWaveEnemies(waveNumber, heroX, config) {
+    config = config || GAME_CONFIG;
     const wave = STAGE_WAVES[waveNumber - 1];
+    const stageW = config.stageWidth || config.width;
+    const spacing = 70;
+    const lead = 120;
+    // Base origin: 120px ahead of the hero, but never left of the classic
+    // spawn zone (x=420) and never so far right that the last enemy would
+    // start beyond the stage edge.
+    let origin = 420;
+    if (heroX !== undefined && stageW > config.width) {
+      const heroLead = heroX + lead;
+      const maxOrigin = stageW - (wave.roster.length - 1) * spacing - 100;
+      origin = clamp(Math.max(heroLead, 420), 420, Math.max(420, maxOrigin));
+    }
     return wave.roster.map(function (type, i) {
-      return makeEnemy(type, 420 + i * 70);
+      return makeEnemy(type, origin + i * spacing);
     });
   }
 
@@ -190,7 +209,7 @@ module.exports (Node). No DOM access, no network, zero dependencies.
     const currentWave = options.currentWave || 1;
     return {
       hero: hero,
-      enemies: options.enemies || spawnWaveEnemies(currentWave),
+      enemies: options.enemies || spawnWaveEnemies(currentWave, hero.x, config),
       projectiles: [],
       particles: [],
       cameraX: 0,
@@ -460,7 +479,7 @@ module.exports (Node). No DOM access, no network, zero dependencies.
     if (state.enemies.length === 0) {
       if (state.currentWave < STAGE_WAVES.length) {
         state.currentWave += 1;
-        state.enemies = spawnWaveEnemies(state.currentWave);
+        state.enemies = spawnWaveEnemies(state.currentWave, hero.x, config);
       } else {
         state.status = 'victory';
       }

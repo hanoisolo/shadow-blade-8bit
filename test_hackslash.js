@@ -1421,6 +1421,86 @@ test('hotfix: engine stepEnemiesAI clamps enemy movement to stageWidth in scroll
   );
 });
 
+test('wavefix: next wave spawns ahead of a scrolled-right hero (not behind camera)', function () {
+  // Simulate clearing wave 1 while the hero has walked right to x=1500.
+  const s = newState([], { currentWave: 1 });
+  s.hero.scrollStage = true;
+  s.hero.x = 1500;
+  E.stepEnemiesAI(s, CONFIG);
+  assert.strictEqual(s.currentWave, 2, 'empty wave must advance to wave 2');
+  assert.ok(s.enemies.length > 0, 'wave 2 must spawn enemies');
+  const heroCenter = s.hero.x + s.hero.width / 2;
+  const nearest = s.enemies.reduce(function (a, b) {
+    return Math.abs((a.x + a.width / 2) - heroCenter) < Math.abs((b.x + b.width / 2) - heroCenter) ? a : b;
+  });
+  const dx = Math.abs((nearest.x + nearest.width / 2) - heroCenter);
+  assert.ok(dx <= 200, 'nearest wave-2 enemy too far from hero: dx=' + dx.toFixed(1));
+  const cam = s.cameraX;
+  const onScreen = s.enemies.some(function (e) {
+    return (e.x + e.width) >= cam && e.x <= cam + (CONFIG.viewportWidth || CONFIG.width);
+  });
+  assert.ok(onScreen, 'at least one wave-2 enemy must be on screen relative to camera');
+});
+
+test('wavefix: next wave spawn is clamped within stage bounds', function () {
+  const s = newState([], { currentWave: 2 });
+  s.hero.scrollStage = true;
+  s.hero.x = 3000;
+  E.stepEnemiesAI(s, CONFIG);
+  assert.strictEqual(s.currentWave, 3, 'empty wave 2 must advance to wave 3');
+  assert.ok(s.enemies.length > 0, 'wave 3 must spawn enemies');
+  const stageW = CONFIG.stageWidth || CONFIG.width;
+  s.enemies.forEach(function (e) {
+    assert.ok(e.x >= 0, 'enemy spawned left of stage: x=' + e.x);
+    assert.ok(e.x + e.width <= stageW, 'enemy spawned past stage right edge: x=' + e.x + ' w=' + e.width);
+  });
+});
+
+test('wavefix: initial wave-1 spawn is unchanged at the classic x=420 zone', function () {
+  const s = E.createInitialState();
+  const xs = s.enemies.map(function (e) { return e.x; });
+  assert.deepStrictEqual(xs, [420, 490, 560, 630], 'wave-1 spawn positions must be unchanged');
+});
+
+test('wavefix: full run simulation clears wave 1 and spawns wave 2 on screen', function () {
+  const s = E.createInitialState();
+  s.hero.scrollStage = true;
+  const input = { left: false, right: false, jump: false, hack: false };
+  let clearedWave1 = false;
+  for (let frame = 0; frame < 600 && s.status === 'playing'; frame++) {
+    input.left = false; input.right = false; input.jump = false; input.hack = false;
+    const hc = s.hero.x + s.hero.width / 2;
+    let best = null;
+    let bd = Infinity;
+    for (let i = 0; i < s.enemies.length; i++) {
+      const d = Math.abs((s.enemies[i].x + s.enemies[i].width / 2) - hc);
+      if (d < bd) { bd = d; best = s.enemies[i]; }
+    }
+    if (best) {
+      const ec = best.x + best.width / 2;
+      if (bd > 94) {
+        if (ec < hc) input.left = true; else input.right = true;
+      } else {
+        input.hack = true;
+        s.hero.facing = ec < hc ? -1 : 1;
+      }
+    }
+    E.stepHeroPhysics(s.hero, input, CONFIG);
+    if (input.hack) E.performHeroHack(s, CONFIG);
+    E.stepEnemiesAI(s, CONFIG);
+    if (!clearedWave1 && s.currentWave === 2) {
+      clearedWave1 = true;
+      const cam = s.cameraX;
+      const onScreen = s.enemies.some(function (e) {
+        return (e.x + e.width) >= cam && e.x <= cam + (CONFIG.viewportWidth || CONFIG.width);
+      });
+      assert.ok(s.enemies.length > 0, 'wave 2 must have enemies');
+      assert.ok(onScreen, 'wave-2 enemies must be on screen after wave-1 clear');
+    }
+  }
+  assert.ok(clearedWave1, 'simulation must clear wave 1 within 600 frames');
+});
+
 /* ---------- Summary ---------- */
 
 console.log('----------------------------------------');
