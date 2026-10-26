@@ -12,13 +12,15 @@ Zero dependencies.
   const CONFIG = E.GAME_CONFIG;
   const STORAGE_KEY = 'shadow_blade_8bit_state_v1';
   const CHROMA_KEY_THRESHOLD = 28;
-  const CHROMA_KEY_SOFT_THRESHOLD = 55;
-  const CHROMA_KEY_MAX_DISTANCE = 9000;
+  const CHROMA_KEY_MAX_DISTANCE = 2600;
   const HIT_STOP_FRAMES = 4;
   const BANNER_FRAMES = 120;
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
+  // Crisp 8-bit look: sub-pixel movement must never blend sprite edge
+  // pixels into fuzzy semi-transparent fringes.
+  ctx.imageSmoothingEnabled = false;
 
   const els = {
     heroHpBar: document.getElementById('hud-hero-hp-bar'),
@@ -159,35 +161,34 @@ Zero dependencies.
   const sheets = {};
   let bgImage = null;
 
-  // A pixel is stripped when it is hard black (CHROMA_KEY_THRESHOLD core
-  // pass), near-black (soft pass, r/g/b all < 55), or dark enough that its
-  // Euclidean color magnitude (r*r + g*g + b*b) falls below 9000. The two
-  // broader passes remove the dark-gray JPEG compression halo that rings
-  // every sprite - especially around the leftmost idle frame at x = 0 -
-  // which previously rendered as solid black background boxes.
+  // A pixel is stripped ONLY when it is hard background black: all channels
+  // below CHROMA_KEY_THRESHOLD (28 < 32, satisfying the hard-black check),
+  // or a very low Euclidean color magnitude (r*r + g*g + b*b < 2600). The
+  // earlier broad passes (r < 55, distance < 9000) are removed: they punched
+  // transparent holes through dark goblin skin, skeleton armor shadows, and
+  // the hero's running pose, producing a translucent screen-door look.
+  // Interior character shading (skin, armor, weapons, hair) stays 100%
+  // solid and opaque.
   function isChromaKeyPixel(r, g, b) {
     if (r < CHROMA_KEY_THRESHOLD &&
         g < CHROMA_KEY_THRESHOLD &&
         b < CHROMA_KEY_THRESHOLD) {
       return true;
     }
-    if (r < CHROMA_KEY_SOFT_THRESHOLD &&
-        g < CHROMA_KEY_SOFT_THRESHOLD &&
-        b < CHROMA_KEY_SOFT_THRESHOLD) {
-      return true;
-    }
     return (r * r + g * g + b * b) < CHROMA_KEY_MAX_DISTANCE;
   }
 
-  // Strips background pixels into transparent alpha via an offscreen canvas
-  // + getImageData/putImageData across the entire sheet width (including the
-  // leftmost idle frame boundaries), so sprites composite cleanly over the
-  // stage background with zero black boxes.
+  // Strips the black sheet background into transparent alpha via an
+  // offscreen canvas + getImageData/putImageData across the entire sheet
+  // width (including the leftmost idle frame boundaries), isolating only
+  // the background so sprites composite cleanly and fully solid over the
+  // stage.
   function processSheetChromaKey(img) {
     const off = document.createElement('canvas');
     off.width = img.naturalWidth;
     off.height = img.naturalHeight;
     const offCtx = off.getContext('2d');
+    offCtx.imageSmoothingEnabled = false;
     offCtx.drawImage(img, 0, 0);
     try {
       const imageData = offCtx.getImageData(0, 0, off.width, off.height);
@@ -222,6 +223,7 @@ Zero dependencies.
       off.width = fw;
       off.height = fh;
       const offCtx = off.getContext('2d');
+      offCtx.imageSmoothingEnabled = false;
       offCtx.drawImage(sheetCanvas, poseIndex * fw, 0, fw, fh, 0, 0, fw, fh);
       offCtx.globalCompositeOperation = 'source-in';
       offCtx.fillStyle = color;
