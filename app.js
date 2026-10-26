@@ -18,6 +18,15 @@ Zero dependencies.
   const CHROMA_KEY_BACKGROUND_LIMIT = CHROMA_KEY_THRESHOLD - 3;
   const HIT_STOP_FRAMES = 4;
   const BANNER_FRAMES = 120;
+  // End-of-run banners (VICTORY / GAME OVER) linger a little longer than a
+  // wave-change banner so the result is readable before the screen clears
+  // and the START / RESTART prompt takes over.
+  const END_RUN_BANNER_FRAMES = 300;
+  // After the result banner expires, show the restart prompt (non-sticky,
+  // auto-dismisses like any other transient banner) so the screen never
+  // sits on a dead result forever.
+  const END_RUN_PROMPT_DELAY_FRAMES = 60;
+  const END_RUN_PROMPT_FRAMES = 240;
 
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
@@ -305,16 +314,17 @@ Zero dependencies.
   let landSquash = 0;
   let tick = 0;
   let bannerTimer = 0;
+  let endRunPromptTimer = 0;
   let prevHeroHp = state.hero.hp;
   let prevWave = state.currentWave;
   let prevStatus = state.status;
   let wasGrounded = true;
   const floatingTexts = [];
 
-  function showBanner(text, sticky) {
+  function showBanner(text, sticky, frames) {
     els.statusBanner.textContent = text;
     els.statusBanner.classList.remove('hidden');
-    bannerTimer = sticky ? -1 : BANNER_FRAMES;
+    bannerTimer = sticky ? -1 : (frames || BANNER_FRAMES);
   }
 
   function resetEffects() {
@@ -322,6 +332,7 @@ Zero dependencies.
     shake = 0;
     landSquash = 0;
     bannerTimer = 0;
+    endRunPromptTimer = 0;
     floatingTexts.length = 0;
   }
 
@@ -515,6 +526,14 @@ Zero dependencies.
   /* ---------- Per-frame engine stepping ---------- */
 
   function stepGame() {
+    // Terminal states are frozen: the world stops simulating once the run
+    // ends so the hero, enemies, and projectiles hold their final pose
+    // behind the end-of-run banner until START / RESTART begins a new run.
+    if (state.status !== 'playing') {
+      stepEffects();
+      return;
+    }
+
     const hero = state.hero;
 
     E.stepHeroPhysics(hero, input, CONFIG);
@@ -608,10 +627,11 @@ Zero dependencies.
     if (state.score > highScore) {
       highScore = state.score;
       persist();
-      showBanner(label + ' - NEW HIGH SCORE ' + highScore, true);
+      showBanner(label + ' - NEW HIGH SCORE ' + highScore, false, END_RUN_BANNER_FRAMES);
     } else {
-      showBanner(label + ' - SCORE ' + state.score, true);
+      showBanner(label + ' - SCORE ' + state.score, false, END_RUN_BANNER_FRAMES);
     }
+    endRunPromptTimer = END_RUN_PROMPT_DELAY_FRAMES;
   }
 
   /* ---------- Rendering ---------- */
@@ -986,6 +1006,15 @@ Zero dependencies.
     if (bannerTimer > 0) {
       bannerTimer -= 1;
       if (bannerTimer === 0) els.statusBanner.classList.add('hidden');
+    }
+    // After an end-of-run result banner expires, surface the restart prompt
+    // once (auto-dismissing) so the banner never lingers forever.
+    if (endRunPromptTimer > 0) {
+      endRunPromptTimer -= 1;
+      if (endRunPromptTimer === 0 &&
+          (state.status === 'victory' || state.status === 'gameover')) {
+        showBanner('PRESS START / RESTART TO PLAY AGAIN', false, END_RUN_PROMPT_FRAMES);
+      }
     }
     render(now);
     syncHud();

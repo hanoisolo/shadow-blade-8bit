@@ -362,6 +362,13 @@ module.exports (Node). No DOM access, no network, zero dependencies.
     }
 
     if (hits.length > 0) {
+      // Latch bossDefeated the moment the killing blow lands, before the
+      // corpse is filtered out below - stepEnemiesAI's wave-clear branch
+      // runs on the next frame and would otherwise never see the ogre.
+      if (!state.bossDefeated) {
+        const killedOgre = hits.some(function (h) { return h.killed && h.type === 'ogre'; });
+        if (killedOgre) state.bossDefeated = true;
+      }
       state.enemies = state.enemies.filter(function (e) { return e.hp > 0; });
     }
     return { triggered: true, hits: hits };
@@ -398,8 +405,12 @@ module.exports (Node). No DOM access, no network, zero dependencies.
       if (enemy.attackCooldown > 0) enemy.attackCooldown -= 1;
       if (enemy.hurtTimer > 0) enemy.hurtTimer -= 1;
 
+      // Enemies roam the full scrolling stage, not just the 800px viewport:
+      // movement and knockback clamp to stageWidth whenever the stage is
+      // wider than the single-screen width.
+      const enemyMaxX = (config.stageWidth || config.width) - enemy.width;
       if (enemy.vx !== 0) {
-        enemy.x = clamp(enemy.x + enemy.vx, 0, config.width - enemy.width);
+        enemy.x = clamp(enemy.x + enemy.vx, 0, enemyMaxX);
         enemy.vx *= 0.8;
         if (Math.abs(enemy.vx) < 0.1) enemy.vx = 0;
       }
@@ -419,11 +430,11 @@ module.exports (Node). No DOM access, no network, zero dependencies.
             hero.animState = 'hurt';
             state.combo = 0;
             state.comboTimer = 0;
-            hero.x = clamp(hero.x + enemy.facing * HERO_KNOCKBACK_DISTANCE, 0, config.width - hero.width);
+            hero.x = clamp(hero.x + enemy.facing * HERO_KNOCKBACK_DISTANCE, 0, (config.stageWidth || config.width) - hero.width);
           }
         }
       } else {
-        enemy.x = clamp(enemy.x + enemy.facing * enemy.speed, 0, config.width - enemy.width);
+        enemy.x = clamp(enemy.x + enemy.facing * enemy.speed, 0, enemyMaxX);
         enemy.animState = enemy.type === 'goblin' ? 'run' : 'walk';
       }
     }
@@ -436,6 +447,14 @@ module.exports (Node). No DOM access, no network, zero dependencies.
     if (hero.hp <= 0) {
       state.status = 'gameover';
       return;
+    }
+
+    // Backstop: if the ogre died outside performHeroHack (e.g. a projectile or
+    // scripted kill), still latch bossDefeated before the wave-clear branch.
+    if (!state.bossDefeated && state.enemies.some(function (e) {
+      return e.type === 'ogre' && e.hp <= 0;
+    })) {
+      state.bossDefeated = true;
     }
 
     if (state.enemies.length === 0) {
